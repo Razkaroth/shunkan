@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { sourceOrganizationFile } from "../../config.ts";

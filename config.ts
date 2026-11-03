@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { configureDataFiles, existsSync as dataExistsSync } from "./src/persistence/data-file.ts";
 
 /** Repository root (this file is at <root>/config.ts). */
 export const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -12,9 +12,10 @@ export const ROOT = path.dirname(fileURLToPath(import.meta.url));
  * embedding model cache — when set. The desktop shell points it at
  * userData so nothing is written inside the read-only .app bundle
  * (macOS translocation guarantees the bundle is read-only anyway).
- * Unset (plain web dev / repo work) it resolves to the repo's data/,
- * byte-for-byte as before. Read-only assets (prompts) stay ROOT-anchored
- * on purpose: they ship inside the app bundle by design.
+ * Unset (plain web dev / repo work) it resolves to the repo's data/.
+ * Hosted runs with MONGODB_URI store the mutable records in Mongo instead
+ * (src/persistence/data-file.ts). Read-only assets (prompts) stay
+ * ROOT-anchored on purpose: they ship inside the app bundle by design.
  */
 const DATA_ROOT = process.env.LH_DATA_DIR
 	? path.resolve(process.env.LH_DATA_DIR)
@@ -83,7 +84,7 @@ export class NoActiveUserError extends Error {
 export function learnerRoot(): string {
 	const id = activeUserId();
 	if (id) return userDataDir(id);
-	if (fs.existsSync(INSTALL.users)) throw new NoActiveUserError();
+	if (dataExistsSync(INSTALL.users)) throw new NoActiveUserError();
 	return DATA_ROOT;
 }
 
@@ -245,3 +246,5 @@ export function promptsOverrideDir(): string {
 export const AUTH_FILE = process.env.LH_AUTH_FILE
 	? path.resolve(process.env.LH_AUTH_FILE)
 	: path.join(ROOT, "auth.json");
+
+configureDataFiles({ dataRoot: DATA_ROOT, authFile: AUTH_FILE });

@@ -32,7 +32,7 @@
  * sync fs, no framework.
  */
 
-import * as fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import * as path from "node:path";
 import { LEDGER_FILES, positionsFile, sourcesFile } from "../../config.ts";
 import { assertGraphFormat, ensureGraphFormat } from "./graph-format.ts";

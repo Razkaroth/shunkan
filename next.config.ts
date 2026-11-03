@@ -83,6 +83,8 @@ const nextConfig: NextConfig = {
 			"node_modules/@napi-rs/canvas-*/**/*",
 			// Pi-compatible image resizing runs in an unbundled worker. Photon
 			// loads its colocated WASM through Node, also in packaged Electron.
+			"src/persistence/mongo-worker.mjs",
+			"node_modules/mongoose/node_modules/mongodb/**/*",
 			"src/agent/image-processing/*.mjs",
 			"src/agent/image-processing/LICENSE",
 			"node_modules/@silvia-odwyer/photon-node/**/*",

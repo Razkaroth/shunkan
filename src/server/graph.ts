@@ -1,4 +1,4 @@
-import * as fs from "node:fs";
+import { statSync } from "../persistence/data-file.ts";
 import { LEDGER_FILES, positionsFile } from "../../config.ts";
 import type { GraphSnapshot } from "../core/contracts.ts";
 import type { GraphCostSummary } from "../core/cost-summary.ts";
@@ -64,7 +64,7 @@ export function graphRevision(): number {
 		positionsFile(),
 	]) {
 		try {
-			revision = Math.max(revision, fs.statSync(file).mtimeMs);
+			revision = Math.max(revision, statSync(file).mtimeMs);
 		} catch {
 			/* absent — nothing has ever written it */
 		}
