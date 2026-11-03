@@ -20,6 +20,7 @@ import { chatGPTStream } from "./chatgpt-stream.ts";
 import type { ChatGPTDispatchLifecycle } from "./chatgpt-request-cycle.ts";
 import { createClaudeCodeProvider } from "./claude-code/provider.ts";
 import { streamClaudeCode } from "./claude-code/stream.ts";
+import { gatewayStream } from "./gateway-provision.ts";
 import { nativeSubscriptionId, nativeSubscriptionModel } from "./subscription-bridge.ts";
 import { nativeSubscriptionStream } from "./subscription-stream.ts";
 
@@ -31,16 +32,15 @@ export const APP_IDENTITY = Object.freeze({
 });
 
 /**
- * The one engine factory every agent's model comes from (the pi-ai swap,
- * docs/pi-engine-swap.md). BYOK ALL THE WAY DOWN (owner, 2026-09-22):
- * there are no factory pins — every engine resolves from a RESOLVED SPEC
- * (the settings chain's output) and the one builder here wires it to
- * pi-ai's federated catalogs.
+ * The one engine factory every agent's model comes from. There are no
+ * factory pins — every engine resolves from a RESOLVED SPEC (the settings
+ * chain's output). Catalog metadata still comes from pi-ai. The stream
+ * does not: production calls go through the Vercel AI SDK to AI Gateway
+ * (`gatewayStream`), including slots that used to ride a provider key,
+ * a custom endpoint, or a ChatGPT/Codex subscription.
  *
  * An "engine" is the model + the stream function the agent loop runs on —
- * the two things a test fake replaces. Production engines resolve the model
- * from pi-ai's static catalogs and stream through the same Models
- * collection.
+ * the two things a test fake replaces.
  */
 
 export interface PiEngine {
@@ -124,12 +124,16 @@ function defaultThinkingLevel(model: Model<Api>): ThinkingLevel {
 	return supported[0] ?? "off";
 }
 
-/** The production engine for a RESOLVED spec (model slots wave,
- *  2026-09-20): provider-aware catalog lookup + thinking clamp. The API
- *  key is resolved by pi-ai itself from the environment per request (the
- *  keys seam reflects file-saved keys into env), so the engine never
- *  hardcodes OpenRouter's. */
-export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (() => boolean) = true, lifecycle?: ChatGPTDispatchLifecycle, cacheRetention?: () => CacheRetention | undefined): PiEngine {
+interface ResolvedSpec {
+	models: Models;
+	spec: ResolvedModelSpec;
+	model: Model<Api>;
+	custom: boolean;
+	thinkingPreference: ThinkingLevel | undefined;
+	level: ThinkingLevel;
+}
+
+function resolveSpec(spec: ResolvedModelSpec): ResolvedSpec {
 	const models: Models = piModels();
 	const nativeId = nativeSubscriptionId(spec.provider);
 	const registeredModel = spec.provider === "chatgpt" ? chatGPTModel(spec.id) : nativeId ? nativeSubscriptionModel(spec.provider, spec.id) : models.getModel(spec.provider, spec.id);
@@ -148,17 +152,41 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 	const level = thinkingPreference
 		? clampThinkingLevel(model, thinkingPreference)
 		: defaultThinkingLevel(model);
-	// A lesson's agent loop can stay alive through many tool calls. Remember
-	// only that this is a custom route, never its configuration for that run.
+	return { models, spec, model, custom, thinkingPreference, level };
+}
+
+/** The production engine for a RESOLVED spec: catalog lookup + thinking
+ *  clamp, then a stream through the Vercel AI Gateway. Provider keys and
+ *  subscription tokens are not attached to that request. */
+export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (() => boolean) = true, lifecycle?: ChatGPTDispatchLifecycle, cacheRetention?: () => CacheRetention | undefined): PiEngine {
+	const resolved = resolveSpec(spec);
+	// Kept on the signature so callers that pass subscription lifecycle or
+	// background purpose still type-check. Neither selects a transport.
+	void background;
+	void lifecycle;
+	void cacheRetention;
+	return {
+		model: resolved.model,
+		level: resolved.level,
+		// Every step, including later tool-loop steps, is one gateway request.
+		// The Pi agent still executes tools; the SDK only returns the call.
+		streamFn: (requestModel, context, options) => gatewayStream(requestModel, context, {
+			...options,
+			reasoning: resolved.level === "off" ? undefined : resolved.level,
+		}),
+	};
+}
+
+/** Previous per-provider transport. Production model calls do not use it.
+ *  Adapter tests still exercise ChatGPT, native subscriptions, custom
+ *  endpoints, and pi-ai's own provider payloads through this factory. */
+export function providerEngineForSpec(spec: ResolvedModelSpec, background: boolean | (() => boolean) = true, lifecycle?: ChatGPTDispatchLifecycle, cacheRetention?: () => CacheRetention | undefined): PiEngine {
+	const { models, model, custom, thinkingPreference, level } = resolveSpec(spec);
+	const permitImages = (value: Model<Api>): Model<Api> => ({ ...value, input: ["text", "image"] });
 	return {
 		model,
 		level,
-		// The agent loop forwards state.thinkingLevel as `reasoning` (undefined
-		// = off on pi-ai's scale). Built-ins keep the factory clamp; custom
-		// requests re-resolve thinking against their current metadata below.
 		streamFn: (requestModel, context, options) => {
-			// Read the slot preference for every operation, not just engine creation.
-			// Unset adds NOTHING: native defaults/env and explicit caller options survive.
 			const retention = cacheRetention?.();
 			const requestOptions = {
 				...options,
@@ -166,10 +194,6 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 				reasoning: level === "off" ? undefined : level,
 			};
 			if (custom) {
-				// Revalidate before EVERY upstream model operation, including later
-				// tool-loop steps. Resolve thinking from the ORIGINAL preference (or
-				// existing default order), not a previous metadata snapshot's clamp.
-				// Pi retains the setup of an operation already in flight.
 				const current = piModels();
 				const currentModel = current.getModel(spec.provider, spec.id);
 				if (!currentModel) return lazyStream(requestModel, async () => { throw new Error("The selected custom model is unavailable."); });
@@ -179,6 +203,7 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 				return current.streamSimple(permitImages(currentModel), context, { ...requestOptions, reasoning: currentLevel === "off" ? undefined : currentLevel });
 			}
 			const purpose = typeof background === "function" ? background : () => background;
+			const nativeId = nativeSubscriptionId(spec.provider);
 			const stream = spec.provider === "chatgpt" ? chatGPTStream(purpose, lifecycle) : nativeId ? nativeSubscriptionStream(models.getProvider(nativeId)!, purpose, lifecycle) : models.streamSimple.bind(models);
 			return stream(requestModel, context, requestOptions);
 		},

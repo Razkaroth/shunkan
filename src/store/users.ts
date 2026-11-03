@@ -14,6 +14,7 @@ import { INSTALL, isUserId } from "../../config.ts";
 import {
 	DEFAULT_HOST_SETTINGS,
 	isProfileColor,
+	isStripeCustomerId,
 	isValidPin,
 	type HostSettings,
 	type Profile,
@@ -53,6 +54,7 @@ function sanitizeProfile(raw: unknown): Profile | null {
 		color: r.color,
 		role: r.role,
 		...(isValidPin(r.pin) ? { pin: r.pin } : {}),
+		...(isStripeCustomerId(r.stripeCustomerId) ? { stripeCustomerId: r.stripeCustomerId } : {}),
 		createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date(0).toISOString(),
 	};
 }

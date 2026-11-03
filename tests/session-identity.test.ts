@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { Type } from "typebox";
 import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, normalizeContext, type Model, type SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { streamSimple as streamCodex } from "@earendil-works/pi-ai/api/openai-codex-responses";
-import { APP_IDENTITY, piEngineForSpec, type PiEngine } from "../src/agent/models.ts";
+import { APP_IDENTITY, providerEngineForSpec, type PiEngine } from "../src/agent/models.ts";
 import { createProberAgent, createTeacherAgent, createPracticeAgent, type AgentBuildOptions } from "../src/agent/teacher-agent.ts";
 import { runSubagent } from "../src/agent/subagents/pi-run.ts";
 import { healToolRecord } from "../src/agent/tools/heal.ts";
@@ -91,7 +91,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 		["openrouter", "openrouter/free", "/api/v1/chat/completions"],
 	] as const) {
 		it(`complete native ${provider}/${id} foreground serialization carries app identity and exact sessions`, async () => closed(async () => {
-			const engine = piEngineForSpec({ provider, id, thinkingLevel: "off" });
+			const engine = providerEngineForSpec({ provider, id, thinkingLevel: "off" });
 			const requests: Request[] = [];
 			globalThis.fetch = async (input, init) => { const request = new Request(input, init); requests.push(request); await request.text(); return new Response('{"error":{"message":"closed fixture"}}', { status: 400, headers: { "content-type": "application/json" } }); };
 			for (const factory of factories) await factory({ engine, chatId: "chat_wire_exact", tools: {} }).prompt("offline");
@@ -115,7 +115,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 	}
 
 	it("native OpenAI cache keys clamp to 64 characters while affinity retains exact session", async () => closed(async () => {
-		const engine = piEngineForSpec({ provider: "openai", id: "gpt-4o-mini", thinkingLevel: "off" });
+		const engine = providerEngineForSpec({ provider: "openai", id: "gpt-4o-mini", thinkingLevel: "off" });
 		const sessionId = "chat_" + "a".repeat(70);
 		let body: Record<string, unknown> = {};
 		let headers = new Headers();
@@ -126,7 +126,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 	}));
 
 	it("native OpenAI cache-key clamp counts Unicode code points, not UTF-16 units", async () => closed(async () => {
-		const engine = piEngineForSpec({ provider: "openai", id: "gpt-4o-mini", thinkingLevel: "off" });
+		const engine = providerEngineForSpec({ provider: "openai", id: "gpt-4o-mini", thinkingLevel: "off" });
 		const sessionId = "chat_" + "😀".repeat(70);
 		let payload: unknown;
 		// HTTP affinity headers cannot encode emoji. Observe native payload
@@ -139,7 +139,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 	}));
 
 	it("native Codex serialization shares the 64-code-point clamp without an account or OAuth flow", async () => closed(async () => {
-		const engine = piEngineForSpec({ provider: "openai-codex", id: "gpt-6-luna", thinkingLevel: "off" });
+		const engine = providerEngineForSpec({ provider: "openai-codex", id: "gpt-6-luna", thinkingLevel: "off" });
 		// Synthetic, unsigned fixture token solely satisfies native local claim
 		// decoding. Stop at payload capture: no account, OAuth, or fetch.
 		const claims = { "https://api.openai.com/auth": { chatgpt_account_id: "offline-fixture" } };
@@ -159,7 +159,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 	}));
 
 	it("SDK native header precedence and cache-off behavior remain untouched", async () => closed(async () => {
-		const engine = piEngineForSpec({ provider: "opencode-go", id: "gpt-6-luna", thinkingLevel: "off" });
+		const engine = providerEngineForSpec({ provider: "opencode-go", id: "gpt-6-luna", thinkingLevel: "off" });
 		let headers = new Headers();
 		let body: Record<string, unknown> = {};
 		globalThis.fetch = async (input, init) => { const request = new Request(input, init); headers = request.headers; body = JSON.parse(await request.text()); return new Response("{}", { status: 400, headers: { "content-type": "application/json" } }); };
@@ -172,7 +172,7 @@ describe("native app and conversation identity", { concurrency: false }, () => {
 	}));
 
 	it("completed malformed native JSON stays rejected despite app prepareArguments healing", async () => closed(async () => {
-		const engine = piEngineForSpec({ provider: "openrouter", id: "openai/gpt-4o-mini", thinkingLevel: "off" });
+		const engine = providerEngineForSpec({ provider: "openrouter", id: "openai/gpt-4o-mini", thinkingLevel: "off" });
 		const malformed = '{"value":';
 		globalThis.fetch = async () => new Response(`data: ${JSON.stringify({ id: "offline", choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_bad", type: "function", function: { name: "check", arguments: malformed } }] }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }] })}\n\ndata: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
 		let executed = 0;

@@ -14,7 +14,7 @@ import {
 	type JsonObject, type TranscriptContext, type Usage,
 } from "@earendil-works/pi-ai";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import { APP_IDENTITY, piEngineForSpec, type PiEngine } from "../src/agent/models.ts";
+import { APP_IDENTITY, providerEngineForSpec, type PiEngine } from "../src/agent/models.ts";
 import { runVisualMaker } from "../src/agent/subagents/visual-maker.ts";
 import { runPdfReaderAgent } from "../src/agent/subagents/pdf-reader.ts";
 import type { HeadlessApi } from "../src/agent/subagents/headless.ts";
@@ -195,7 +195,7 @@ describe("provider-neutral raw agent loops", { concurrency: false }, () => {
 		for (const loop of LOOPS) {
 			it(`${loop}: native ${transport.provider}/${transport.api} endpoint, payload and live per-request auth`, async () => {
 				await isolated({ OPENROUTER_API_KEY: OR_KEY, ...(transport.provider === "openrouter" ? {} : { [transport.envVar]: "dummy-selected-key-first" }) }, async () => {
-					const engine = piEngineForSpec({ provider: transport.provider, id: transport.id, thinkingLevel: "off" });
+					const engine = providerEngineForSpec({ provider: transport.provider, id: transport.id, thinkingLevel: "off" });
 					assert.equal(engine.model.api, transport.api);
 					const requests: RecordedRequest[] = [];
 					globalThis.fetch = closedFetch(transport, loop, requests);
@@ -225,7 +225,7 @@ describe("provider-neutral raw agent loops", { concurrency: false }, () => {
 					await isolated({ OPENROUTER_API_KEY: OR_KEY }, async () => {
 						let fetches = 0;
 						globalThis.fetch = async () => { fetches++; throw new Error("CLOSED: no fetch allowed"); };
-						const engine = piEngineForSpec({ provider: transport.provider, id: transport.id, thinkingLevel: "off" });
+						const engine = providerEngineForSpec({ provider: transport.provider, id: transport.id, thinkingLevel: "off" });
 						const run = await runLoop(loop, engine);
 						const failure = "svg" in run.result ? run.result.notes : run.result.brief;
 						assert.match(failure ?? "", new RegExp(`Provider is not configured: ${transport.provider}`));
@@ -295,7 +295,7 @@ function assertPayload(transport: Transport, loop: Loop, round: number, body: Re
 	const json = JSON.stringify(body);
 	assert.match(json, new RegExp(loop === "visual" ? "white square" : "Read page 1"));
 	if (round === 2) {
-		const supportsImages = piEngineForSpec({ provider: transport.provider, id: transport.id }).model.input.includes("image");
+		const supportsImages = providerEngineForSpec({ provider: transport.provider, id: transport.id }).model.input.includes("image");
 		assert.equal(json.includes(PNG.toString("base64")), supportsImages, "native modality filtering: only vision models receive rendered images");
 		assert.match(json, new RegExp(transport.api === "google-generative-ai" ? "functionResponse" : transport.api === "openai-responses" ? "function_call_output" : transport.api === "anthropic-messages" ? "tool_result" : '"role":"tool"'));
 		assert.match(json, new RegExp(loop === "visual" ? "Rendered" : "Page 1"));

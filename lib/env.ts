@@ -18,6 +18,10 @@ const schema = z.object({
 	S3_SECRET_ACCESS_KEY: z.string().min(1).default("silo-local-dev"),
 	NODE_ENV: z.string().optional(),
 	VERCEL_ENV: z.string().optional(),
+	/** AI Gateway credential for local, CI, and non-Vercel hosts. Vercel deployments can use OIDC instead. */
+	AI_GATEWAY_API_KEY: z.string().min(1).optional(),
+	/** Restricted Stripe key (rk_…) with Billing meter events write. The gateway sends meter events; this app does not. */
+	STRIPE_RESTRICTED_ACCESS_KEY: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof schema>;
@@ -41,5 +45,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
 		S3_SECRET_ACCESS_KEY: source.S3_SECRET_ACCESS_KEY,
 		NODE_ENV: source.NODE_ENV,
 		VERCEL_ENV: source.VERCEL_ENV,
+		AI_GATEWAY_API_KEY: source.AI_GATEWAY_API_KEY,
+		STRIPE_RESTRICTED_ACCESS_KEY: source.STRIPE_RESTRICTED_ACCESS_KEY,
 	});
 }

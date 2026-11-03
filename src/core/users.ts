@@ -34,6 +34,8 @@ export interface Profile {
 	color: ProfileColor;
 	role: ProfileRole;
 	pin?: string;
+	/** Stripe customer (`cus_…`) billed for this profile's gateway token usage. Absent means the request is not metered. */
+	stripeCustomerId?: string;
 	createdAt: string;
 }
 
@@ -96,6 +98,11 @@ export function profileNameProblem(name: string, others: readonly { name: string
 /** PINs are 4–8 digits. */
 export function isValidPin(value: unknown): value is string {
 	return typeof value === "string" && /^\d{4,8}$/.test(value);
+}
+
+/** Stripe customer ids the AI Gateway meter events accept. */
+export function isStripeCustomerId(value: unknown): value is string {
+	return typeof value === "string" && /^cus_[A-Za-z0-9]+$/.test(value);
 }
 
 /** First letter of the first two words; a single word gives its first two letters. */

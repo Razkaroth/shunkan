@@ -34,12 +34,12 @@ fs.readFileSync = ((...args: Parameters<typeof read>) => {
 }) as typeof read;
 await import("../../src/server/keys.ts");
 if (mode === "inspect") {
-	const { piModels, piEngineForSpec } = await import("../../src/agent/models.ts");
+	const { piModels, providerEngineForSpec } = await import("../../src/agent/models.ts");
 	const { normalizeContext } = await import("@earendil-works/pi-ai");
 	const enabled = Boolean(piModels().getProvider("custom"));
 	let reason: string | undefined;
 	try {
-		const engine = piEngineForSpec({ provider: "custom", id: "m" });
+		const engine = providerEngineForSpec({ provider: "custom", id: "m" });
 		reason = (await engine.streamFn(engine.model, normalizeContext({ messages: [{ role: "user", content: "fixture", timestamp: 0 }] }), {}).result()).stopReason;
 	} catch { reason = "refused"; }
 	const { keyStatuses } = await import("../../src/server/keys.ts");

@@ -21,6 +21,7 @@ import path from "node:path";
 import { INSTALL, LEARNER_ENTRIES, runAsUser, userDataDir } from "../../config.ts";
 import {
 	isProfileColor,
+	isStripeCustomerId,
 	isValidPin,
 	normalizeProfileName,
 	profileNameProblem,
@@ -138,6 +139,8 @@ interface ProfileInput {
 	/** Written into the profile's own settings record. Create ignores an
 	 *  unknown value; edit refuses it. */
 	language?: unknown;
+	/** Admin only. null clears the Stripe customer used for gateway metering. */
+	stripeCustomerId?: unknown;
 }
 
 function parseName(raw: unknown, others: readonly Profile[]): string {
@@ -222,6 +225,12 @@ export function updateProfile(req: Request | undefined, id: string, input: Profi
 	if (pin === null) delete next.pin;
 	else if (pin !== undefined) next.pin = pin;
 	if (input.language !== undefined && !isAppLanguage(input.language)) throw new UsersError(400, "Pick a language.");
+	if (input.stripeCustomerId !== undefined) {
+		if (caller.role !== "admin") throw new UsersError(403, "Only the admin can set Stripe billing.");
+		if (input.stripeCustomerId === null || input.stripeCustomerId === "") delete next.stripeCustomerId;
+		else if (isStripeCustomerId(input.stripeCustomerId)) next.stripeCustomerId = input.stripeCustomerId;
+		else throw new UsersError(400, "Stripe customer ids look like cus_…");
+	}
 	writeProfiles(profiles.map((p) => (p.id === id ? next : p)));
 	if (input.language !== undefined) writeLanguage(id, input.language);
 	return publicWithLanguage(next);

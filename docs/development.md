@@ -18,7 +18,7 @@ npm start              # serve the production build with Next
 npm run desktop:dev    # Next dev + Electron pointed at localhost:3000
 ```
 
-No API key is required just to start the UI. Configure a provider/connection and the strong, cheap and vision model slots in Settings before model-driven use. There are no factory model choices. OpenRouter is one supported API provider, **not a required gateway for all calls**. Existing sessions keep their explicit conversation model; background roles use their own settings resolution.
+No API key is required just to start the UI. Model calls are provisioned through the Vercel AI SDK and [AI Gateway](https://vercel.com/docs/ai-gateway). Set `AI_GATEWAY_API_KEY` for local and non-Vercel hosts; a Vercel deployment can use OIDC instead. Choose strong, cheap, and vision slots from gateway model ids (`creator/model`). There are no factory model choices. Per-provider API keys, the custom OpenAI-compatible endpoint, and ChatGPT/Codex or other subscription logins do not authenticate these calls. Existing sessions keep their explicit conversation model; background roles use their own settings resolution.
 
 For local signed macOS packaging, `npm run desktop:dist` runs the build, runtime smoke/assembly checks and Electron Builder with the configured signing/notarization setup. It is not a portable unsigned-build shortcut. See [desktop release](desktop-release.md) for prerequisites, target-OS builds, Windows/Linux packages and release verification.
 
@@ -30,7 +30,9 @@ Secrets and machine-specific paths may be supplied through the process environme
 
 | Configuration | Purpose |
 |---|---|
-| Provider-specific API key variables | Optional; needed only for the selected API provider. The supported UI key names are defined in `src/core/auth-keys.ts`. |
+| `AI_GATEWAY_API_KEY` | Provisions model calls through the Vercel AI Gateway. Optional on Vercel, where OIDC can authenticate instead. |
+| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not a secret key, and not used to create charges here. |
+| Profile `stripeCustomerId` | Optional `cus_…` on a profile, set by the admin. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
 | `DEEPGRAM_API_KEY` | Optional dictation: short-lived token minting on the server; audio streams directly from the browser to Deepgram. |
 | `CHROME_PATH` | Optional Chrome/Chromium executable fallback for demo verification. The Electron browser helper is primary; no extra Chromium is downloaded. PDFs/SVGs use native rendering. |

@@ -143,23 +143,36 @@ test("standalone catalog validation stays strict without a stored section", () =
 	assert.equal(validateModelsSettings({ strong: { model: replacement } }).ok, true);
 });
 
-test("retained selections remain unavailable at runtime, with no API-key fallback or credential lease", async () => {
+test("a disconnected subscription selection streams through AI Gateway and does not lease the Copilot token", async () => {
 	await connection(true);
 	const engine = piEngineForSpec(copilot, false);
 	await connection(false);
 	assert.equal((await put({ ...initial, cheap: { model: replacement } })).status, 200);
 	assert.throws(() => piEngineForSpec(copilot, false), /catalog has no model/);
 	let requests = 0;
+	let host = "";
+	let authorization: string | null = null;
 	const before = leases;
 	const key = process.env.COPILOT_GITHUB_TOKEN;
+	const gatewayKey = process.env.AI_GATEWAY_API_KEY;
 	process.env.COPILOT_GITHUB_TOKEN = "fixture-must-not-be-used";
+	process.env.AI_GATEWAY_API_KEY = "gateway-test-key";
 	try {
-		const result = await engine.streamFn(engine.model, normalizeContext({ messages: [] }), { fetch: async () => { requests++; throw new Error("Must not dispatch"); } }).result();
+		const result = await engine.streamFn(engine.model, normalizeContext({ messages: [] }), { fetch: async (input, init) => {
+			requests++;
+			const request = new Request(input, init);
+			host = new URL(request.url).hostname;
+			authorization = request.headers.get("authorization");
+			return new Response(JSON.stringify({ error: { message: "fixture" } }), { status: 401, headers: { "content-type": "application/json" } });
+		} }).result();
 		assert.equal(result.stopReason, "error");
-		assert.match(result.errorMessage ?? "", /No API-key fallback was used/);
-		assert.equal(requests, 0);
+		assert.match(result.errorMessage ?? "", /AI Gateway/);
+		assert.equal(requests, 1);
+		assert.equal(host, "ai-gateway.vercel.sh");
+		assert.equal(authorization, "Bearer gateway-test-key");
 		assert.equal(leases, before);
 	} finally {
 		if (key === undefined) delete process.env.COPILOT_GITHUB_TOKEN; else process.env.COPILOT_GITHUB_TOKEN = key;
+		if (gatewayKey === undefined) delete process.env.AI_GATEWAY_API_KEY; else process.env.AI_GATEWAY_API_KEY = gatewayKey;
 	}
 });
