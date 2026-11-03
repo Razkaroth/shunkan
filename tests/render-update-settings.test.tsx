@@ -73,7 +73,12 @@ afterEach(async () => {
 describe("version and contextual copy", () => {
 	it("build metadata comes from package.json and exposes only public version/homepage values", () => {
 		const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-		assert.deepEqual(nextConfig.env, { LH_VERSION: pkg.version, LH_HOMEPAGE: pkg.homepage });
+		const env = nextConfig.env ?? {};
+		assert.equal(env.LH_VERSION, pkg.version);
+		assert.equal(env.LH_HOMEPAGE, pkg.homepage);
+		for (const key of Object.keys(env)) {
+			assert.ok(key === "LH_VERSION" || key === "LH_HOMEPAGE" || key === "NEXT_TRAILING_SLASH", key);
+		}
 	});
 
 	it("never claims live/latest information and keeps updater errors generic", () => {

@@ -14,7 +14,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { formatProbeError, probeEnv } from "./smoke-demo-runtime.mjs";
+import { formatProbeError, probeEnv } from "./probe-env.mjs";
 
 export function verifyProviderRuntime(standalone, runtime = process.execPath) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-provider-runtime-"));

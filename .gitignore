@@ -19,3 +19,12 @@ xai-credentials.json*
 
 # dev-fresh launcher scratch (fresh-user sim): disposable per launch
 .fresh-data/
+
+# local stack (direnv / pm2). Secrets stay in the workspace parent.
+.pm2/
+.pm2-agent/
+.cursor-worker/
+.direnv/
+.env
+.env*.local
+media/

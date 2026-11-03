@@ -1,5 +1,9 @@
 # Desktop builds and releases
 
+This hosted fork does not build or publish the Electron app. `electron/`, `electron-builder.yml`, and the desktop release workflows were removed. The rest of this page describes the upstream LearnHarness desktop pipeline and is not a build path here.
+
+
+
 ## Platforms
 
 | Platform | Build runner | Packages | In-app update |
@@ -132,6 +136,6 @@ Changes to the shell, native modules, packaging/updater configuration, or Electr
 
 Packaged apps check at startup and every 24 hours by default, download available updates automatically, and install downloaded updates on quit or through Restart. **Settings → General** shows version/release notes, manual Check for updates, status, and Automatic updates. Turning automatic checks off does not cancel downloads or staged installs; a manual check still downloads available updates. Development builds disable the updater. Errors are logged to `userData/logs/main.log` without taking down the app. The test-only `LH_UPDATE_FEED` environment override points to a generic feed for an authorized local update drill.
 
-Sources: [`electron/main.cjs`](../electron/main.cjs), [`electron/preload.cjs`](../electron/preload.cjs), and [`update-settings.tsx`](../components/settings/update-settings.tsx).
+Sources, upstream only: `electron/main.cjs`, `electron/preload.cjs`, and [`update-settings.tsx`](../components/settings/update-settings.tsx).
 
 After a stable release is published, [`.github/workflows/notify-website.yml`](../.github/workflows/notify-website.yml) dispatches `desktop-release-published` with the tag to `amosblomqvist/learnharness-web`, using the separately scoped `WEBSITE_DISPATCH_TOKEN` secret. Drafts and prereleases do not trigger that job. A successful HTTP 204 means the website update was **queued**, not that deployment or public links have been verified.

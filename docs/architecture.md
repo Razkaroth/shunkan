@@ -1,6 +1,6 @@
 # LearnHarness architecture
 
-This is the current implementation reference for the released app: a Next.js application with an Electron host, native Pi conversations, adaptive teaching and conversational practice, and a persistent knowledge graph. [Development](development.md) covers setup and commands; [teaching methodology](teaching-methodology.md) covers the pedagogical method. Older design documents and the [archived architecture](archive/architecture-2026-09-08.md) are history, not runtime specifications.
+This is the current implementation reference for the hosted app: a Next.js application, native Pi conversations, adaptive teaching and conversational practice, and a persistent knowledge graph. Payload owns admin and the database. The Electron shell is not part of this fork. [Development](development.md) covers setup and commands; [teaching methodology](teaching-methodology.md) covers the pedagogical method. Older design documents and the [archived architecture](archive/architecture-2026-09-08.md) are history, not runtime specifications.
 
 ## 1. Code boundaries
 
@@ -12,7 +12,7 @@ This is the current implementation reference for the released app: a Next.js app
 | `src/agent/` | Native agent construction, tools, provider streams and background workers | `teacher-agent.ts`, `models.ts`, `tools.ts`, `subagents/` |
 | `src/core/` | Contracts, record/view/model projections and domain algorithms | `native-messages.ts`, `input-events.ts`, `view.ts`, `graph.ts`, `coverage.ts` |
 | `src/store/` | Filesystem persistence adapters | `chats.ts`, `jobs.ts`, `graph.ts`, `settings.ts` |
-| `electron/` | Desktop launch, navigation/permission security, credentials and browser helper | `main.cjs`, subscription controllers |
+| `src/server/subscription-native/` | ChatGPT and native-subscription controllers used by the Next server | `chatgpt.cjs`, `subscriptions.cjs` |
 
 The import restrictions in [`eslint.config.mjs`](../eslint.config.mjs) enforce specific boundaries:
 

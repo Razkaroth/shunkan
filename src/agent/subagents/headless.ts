@@ -1,13 +1,13 @@
 import * as fs from "node:fs";
-import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import { standardFontsDir } from "./pdf-ops";
 
 /**
- * Verification engines for sub-agents: demos use the app's own Electron
- * browser-service via puppeteer-core, with system Chrome as fallback.
+ * Verification engines for sub-agents: demos use system Chrome via
+ * puppeteer-core. The packaged Electron browser-service is not part of
+ * this hosted fork.
  * SVGs use resvg (browser fallback); PDFs use pdfjs + Skia (no browser).
  * No extra Chromium is shipped or downloaded.
  *
@@ -93,15 +93,29 @@ const CHROME_CANDIDATES = [
 	"/usr/bin/chromium-browser",
 ];
 
+function existingFile(candidate: string): string | null {
+	try {
+		if (fs.existsSync(candidate)) return candidate;
+	} catch {
+		/* not readable — try the next */
+	}
+	return null;
+}
+
 export function resolveChromeExecutablePath(): string | null {
 	const candidates = [process.env.CHROME_PATH, ...CHROME_CANDIDATES].filter(
 		(p): p is string => typeof p === "string" && p.length > 0,
 	);
 	for (const candidate of candidates) {
-		try {
-			if (fs.existsSync(candidate)) return candidate;
-		} catch {
-			/* not readable — try the next */
+		const found = existingFile(candidate);
+		if (found) return found;
+	}
+	const names = ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"];
+	for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+		if (!dir) continue;
+		for (const name of names) {
+			const found = existingFile(path.join(dir, name));
+			if (found) return found;
 		}
 	}
 	return null;
@@ -143,90 +157,13 @@ export function browserServiceSpawnEnv(
 	return out;
 }
 
-/** The helper binary: inside the packaged app the server runs under
- *  ELECTRON_RUN_AS_NODE so process.execPath IS the app binary; in dev
- *  (plain node) the electron package resolves to the dev binary path. */
+/** Packaged Electron browser-service is not part of this hosted fork. */
 export function browserServiceBinary(): string | null {
-	if (process.versions.electron) return process.execPath;
-	try {
-		const req = createRequire(import.meta.url);
-		const p = req("electron") as unknown as string;
-		return typeof p === "string" && p.length > 0 ? p : null;
-	} catch {
-		return null;
-	}
+	return null;
 }
 
-const BROWSER_SERVICE_TIMEOUT_MS = 15_000;
-let browserServiceProc: import("node:child_process").ChildProcess | null = null;
-
 async function connectBrowserService(): Promise<import("puppeteer-core").Browser | null> {
-	const puppeteer = (await import("puppeteer-core")).default;
-	const { spawn } = await import("node:child_process");
-	let port: number | null = null;
-
-	if (browserServiceProc && browserServiceProc.exitCode === null) {
-		// Helper alive from a previous run — reuse its endpoint.
-		port = (browserServiceProc as { __cdpPort?: number }).__cdpPort ?? null;
-	}
-	if (port === null) {
-		const binary = browserServiceBinary();
-		if (!binary) return null;
-		// Packaged: execPath runs the bundled app (flag reaches main.cjs).
-		// Dev: the bare electron binary needs the repo root as the app arg —
-		// flagless it would open Electron's default app instead of our shell.
-		const appArgs = process.versions.electron ? ["--browser-service"] : [
-			// src/agent/subagents → repo root
-			path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", ".."),
-			"--browser-service",
-		];
-		const proc = spawn(binary, appArgs, {
-			// Cast: the sanitizer is pure over a loose record; NODE_ENV is
-			// always present in a real process.env.
-			env: browserServiceSpawnEnv(process.env) as NodeJS.ProcessEnv,
-			stdio: ["ignore", "pipe", "pipe", "ipc"] as const,
-		});
-		browserServiceProc = proc;
-		port = await new Promise<number | null>((resolve) => {
-			let buf = "";
-			const timer = setTimeout(() => {
-				proc.kill();
-				resolve(null);
-			}, BROWSER_SERVICE_TIMEOUT_MS);
-			const onData = (chunk: Buffer) => {
-				buf += chunk.toString("utf8");
-				const line = buf.split("\n").find((l) => parseBrowserServiceLine(l) !== null);
-				if (line !== undefined) {
-					clearTimeout(timer);
-					resolve(parseBrowserServiceLine(line));
-				}
-			};
-			proc.stdout!.on("data", onData);
-			proc.once("exit", () => {
-				clearTimeout(timer);
-				resolve(null);
-			});
-		});
-		if (port === null) {
-			browserServiceProc = null;
-			return null;
-		}
-		(proc as { __cdpPort?: number }).__cdpPort = port;
-	}
-
-	try {
-		const version = await fetch(`http://127.0.0.1:${port}/json/version`);
-		const info = (await version.json()) as { webSocketDebuggerUrl?: string };
-		if (!info.webSocketDebuggerUrl) return null;
-		// connect ≠ launch: browser.close() below merely disconnects — the
-		// helper stays resident for the next job (IPC-owned lifetime).
-		return await puppeteer.connect({
-			browserWSEndpoint: info.webSocketDebuggerUrl,
-			defaultViewport: null,
-		});
-	} catch {
-		return null;
-	}
+	return null;
 }
 
 /** Serialized helper-page use: the helper owns ONE page target (Electron's
@@ -575,8 +512,7 @@ async function renderPdfPages(
 
 export const realHeadless: HeadlessApi = {
 	available() {
-		// The helper binary exists by construction in the packaged app; in dev
-		// it resolves via the electron package. System Chrome widens coverage.
+		// Hosted demos use system Chrome. The Electron helper is not installed.
 		return browserServiceBinary() !== null || resolveChromeExecutablePath() !== null;
 	},
 	unavailableReason() {

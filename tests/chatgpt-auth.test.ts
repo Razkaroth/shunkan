@@ -9,7 +9,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import type { ChatGPTStatus } from "../src/core/contracts/chatgpt.ts";
 import { completedWithin } from "./completion.ts";
 const require = createRequire(import.meta.url);
-const { createChatGPT, fileStore, allowedAuthEndpoint, SCOPES } = require("../electron/chatgpt.cjs");
+const { createChatGPT, fileStore, allowedAuthEndpoint, SCOPES } = require("../src/server/subscription-native/chatgpt.cjs");
 const { privateKey, publicKey } = await generateKeyPair("RS256");
 const jwk = { ...await exportJWK(publicKey), kid: "scratch-key", alg: "RS256", use: "sig" };
 const tokenUrl = "https://auth.openai.com/api/accounts/oauth/token";

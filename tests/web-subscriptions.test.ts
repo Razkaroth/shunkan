@@ -14,7 +14,7 @@ process.env.LH_DATA_DIR = path.join(directory, "data");
 delete process.env.LH_DESKTOP_SERVER; delete process.env.LH_DESKTOP_API_SECRET;
 await fs.writeFile(process.env.LH_AUTH_FILE, "{}", { mode: 0o600 });
 const require = createRequire(import.meta.url);
-const { SCOPES } = require("../electron/chatgpt.cjs");
+const { SCOPES } = require("../src/server/subscription-native/chatgpt.cjs");
 const { createWebSubscriptionOwner, webSubscriptionOwner, webSubscriptionsEnabled } = await import("../src/server/web-subscriptions.ts");
 const { subscriptionControlsResponse, subscriptionBrowserResponse } = await import("../src/server/web-subscription-http.ts");
 const chat = await import("../src/agent/chatgpt-bridge.ts");
@@ -93,7 +93,7 @@ test("ChatGPT paste-back is a web control only; the shared desktop IPC dispatche
 	assert.equal(response.status, 200);
 	assert.match((await response.json()).value.error, /not from this ChatGPT sign-in/);
 	for (const url of [7, "x".repeat(4097)]) assert.deepEqual((await (await subscriptionControlsResponse(request({ providerId: "chatgpt", op: "callback", url }))).json()).value, { error: "Unsupported ChatGPT control." });
-	const { chatGPTControl } = require("../electron/chatgpt-ipc.cjs");
+	const { chatGPTControl } = require("../src/server/subscription-native/chatgpt-ipc.cjs");
 	assert.deepEqual(await chatGPTControl({ op: "callback", url: "http://127.0.0.1:1/auth/callback" }, {}), { error: "Unsupported ChatGPT control." });
 });
 

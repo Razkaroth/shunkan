@@ -14,7 +14,7 @@ import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import { deflateSync } from "node:zlib";
-import { formatProbeError, probeEnv } from "./smoke-demo-runtime.mjs";
+import { formatProbeError, probeEnv } from "./probe-env.mjs";
 
 export function verifyImageRuntime(standalone, runtime = process.execPath) {
 	const home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-image-runtime-"));

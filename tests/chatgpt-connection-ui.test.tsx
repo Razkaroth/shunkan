@@ -44,7 +44,7 @@ function fixture(initial = disconnected(), overrides: Partial<ChatGPTControlBrid
  return { calls, bridge, push, get status() { return status; }, complete() { push({ ...connected(status.allowBackgroundUse), pending: false }); } };
 }
 function recoveryController({ writeFails = false, tokens = "valid" }: { writeFails?: boolean; tokens?: "valid" | "missing" | "restricted" | "scope" | "expired" } = {}) {
- const require = createRequire(import.meta.url); const { createChatGPT, SCOPES } = require("../electron/chatgpt.cjs"); const { chatGPTControl } = require("../electron/chatgpt-ipc.cjs");
+ const require = createRequire(import.meta.url); const { createChatGPT, SCOPES } = require("../src/server/subscription-native/chatgpt.cjs"); const { chatGPTControl } = require("../src/server/subscription-native/chatgpt-ipc.cjs");
  const registration: any = { id: "fixture", clientId: "oaiapp_fixture", issuer: "https://auth.openai.com", subject: "fixture", email: "fixture@example.invalid", tokens: { accessToken: "fake-access", refreshToken: "fake-refresh", idToken: "fake-id", expiresAt: tokens === "expired" ? 0 : Date.now() + 3600000, scopes: tokens === "scope" ? ["openid"] : [...SCOPES] } };
  if (tokens === "missing") delete registration.tokens; if (tokens === "restricted") registration.reconnectRequired = true;
  let saved = { version: 1, hostId: "urn:uuid:offline-recovery", activeId: "fixture", allowBackgroundUse: true, registrations: [registration] };
@@ -498,7 +498,7 @@ test("canceled attempt's late reply cannot release a newer pending attempt or ap
 });
 
 for (const holdSave of [false, true]) test(`real main/control bridge: immediate pending, actual cancellation, verified callback, then explicit global draft persistence${holdSave ? " (completion held beyond old wait budget)" : ""}`, async () => {
- const require = createRequire(import.meta.url); const { createChatGPT, SCOPES } = require("../electron/chatgpt.cjs"); const { chatGPTControl } = require("../electron/chatgpt-ipc.cjs");
+ const require = createRequire(import.meta.url); const { createChatGPT, SCOPES } = require("../src/server/subscription-native/chatgpt.cjs"); const { chatGPTControl } = require("../src/server/subscription-native/chatgpt-ipc.cjs");
  const { privateKey, publicKey } = await generateKeyPair("RS256"); const jwk = { ...await exportJWK(publicKey), kid: "ui-fixture", alg: "RS256", use: "sig" };
  const consentCompleted = deferred<ChatGPTStatus>(), saveEntered = deferred<void>(), releaseSave = deferred<void>();
  let saved: any = null, authorize!: URL, tokenCalls = 0, completionArmed = false; const listeners = new Set<() => void>();
