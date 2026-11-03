@@ -6,6 +6,7 @@ import { ServerEventsProvider } from "@/components/server-events";
 import { AppearanceProvider } from "@/components/settings/appearance";
 import UpdateBanner from "@/components/update-banner";
 import { I18nProvider } from "@/components/i18n";
+import { ProductTour } from "@/components/product-tour";
 import { translate } from "@/src/core";
 import { pageLanguage } from "../_lib/language";
 import { pageUserId } from "../_lib/user";
@@ -26,17 +27,19 @@ export default async function ProductLayout({ children }: { children: React.Reac
 	return (
 		<I18nProvider initialLanguage={language}>
 			{signedIn ? (
-				<ServerEventsProvider>
-					<AppearanceProvider>
-						<PhoneLayoutProvider>
-							<SidebarProvider>
-								<ActivityProvider>
-									<AppShell>{children}</AppShell>
-								</ActivityProvider>
-							</SidebarProvider>
-						</PhoneLayoutProvider>
-					</AppearanceProvider>
-				</ServerEventsProvider>
+				<ProductTour>
+					<ServerEventsProvider>
+						<AppearanceProvider>
+							<PhoneLayoutProvider>
+								<SidebarProvider>
+									<ActivityProvider>
+										<AppShell>{children}</AppShell>
+									</ActivityProvider>
+								</SidebarProvider>
+							</PhoneLayoutProvider>
+						</AppearanceProvider>
+					</ServerEventsProvider>
+				</ProductTour>
 			) : (
 				children
 			)}
