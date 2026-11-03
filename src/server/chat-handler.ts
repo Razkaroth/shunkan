@@ -14,7 +14,7 @@ import { SubscriptionRequestCycle, type SubscriptionDispatchLifecycle } from "..
 import { reconstructRequestCause } from "../core/native-messages.ts";
 import { createJobRunner } from "../agent/subagents/runner.ts";
 import { createExtractionPipeline } from "../agent/subagents/extraction.ts";
-import type { ModelRole } from "../../config.ts";
+import { activeUserId, type ModelRole } from "../../config.ts";
 import {
 	deliverJobResult,
 	noteSteersDurable,
@@ -31,6 +31,7 @@ import { runPiTurn } from "./pi/ui-stream.ts";
 import { collectToolCallIds } from "./pi/call-ids.ts";
 import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
+import { noteSolSessionEnded, trialBlockResponse, trialMainModel } from "./trial.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
 import { CLAUDE_CODE_PROVIDER } from "../core/contracts/claude-code.ts";
@@ -202,6 +203,9 @@ export async function handleChatInput(
 	if (!record) {
 		return Response.json({ error: "Unknown chat" }, { status: 404 });
 	}
+	const learnerId = activeUserId();
+	const blocked = trialBlockResponse();
+	if (blocked) return blocked;
 
 	// Refuse an ineligible Retry before catalog refresh, compaction, or any
 	// turn/write effects. Revalidate after the awaited gates below too.
@@ -231,7 +235,9 @@ export async function handleChatInput(
 	// write-ahead persist (nothing durable changes), and every downstream
 	// resolution (jobs/extraction gate per-need on their own tiers).
 	const effective = effectiveSettings();
-	const conversation = resolveConversationSpec(record.settings, effective.models.strong);
+	let conversation = resolveConversationSpec(record.settings, effective.models.strong);
+	const forced = trialMainModel(chatId);
+	if (forced) conversation = { provider: forced.provider, id: forced.id, thinkingLevel: conversation?.thinkingLevel };
 	if (!conversation) {
 		const envelope = modelsNotConfigured(["strong"]);
 		console.info(`[chat ${chatId}] turn refused — ${JSON.stringify(envelope)}`);
@@ -592,6 +598,7 @@ export async function handleChatInput(
 				// refolds this on the client after the turn settles. The
 				// provenance message is the turn's FIRST new assistant message.
 				const response = stamped.find((m) => (m as { role?: string }).role === "assistant");
+				if (!isAborted && response) noteSolSessionEnded(learnerId, chatId);
 				if (response && steps.length > 0) {
 					stores.chatStore.appendTurnUsage(chatId, {
 						id: turnUsageId,

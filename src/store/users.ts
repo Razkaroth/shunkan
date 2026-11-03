@@ -55,6 +55,7 @@ function sanitizeProfile(raw: unknown): Profile | null {
 		role: r.role,
 		...(isValidPin(r.pin) ? { pin: r.pin } : {}),
 		...(isStripeCustomerId(r.stripeCustomerId) ? { stripeCustomerId: r.stripeCustomerId } : {}),
+		...(r.trial === true ? { trial: true } : {}),
 		createdAt: typeof r.createdAt === "string" ? r.createdAt : new Date(0).toISOString(),
 	};
 }

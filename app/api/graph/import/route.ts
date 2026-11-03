@@ -17,7 +17,7 @@
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { convertPdf, extraction, joinPages, NotesImportError, sourceDirectory, withUser } from "@/src/server";
+import { convertPdf, extraction, joinPages, NotesImportError, sourceDirectory, trialBlockResponse, withUser } from "@/src/server";
 import { MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits.ts";
 import {
 	emit,
@@ -110,6 +110,8 @@ async function readImportForm(request: Request): Promise<FormData> {
 }
 
 async function handlePOST(request: Request) {
+	const blocked = trialBlockResponse();
+	if (blocked) return blocked;
 	let form: FormData;
 	try {
 		form = await readImportForm(request);

@@ -58,6 +58,23 @@ export function gatewayCustomerId(): string | undefined {
 	}
 }
 
+/**
+ * DeepSeek calls spend the owner's DeepSeek API credits when
+ * `DEEPSEEK_API_KEY` is set: the key rides the gateway request as BYOK.
+ * Other models, including the one GPT-Sol session, do not use that key.
+ * With no key, the gateway keeps whatever DeepSeek credential it already
+ * has cached. This does not set a price.
+ */
+export function deepseekByokOptions(
+	modelId: string,
+	env: NodeJS.ProcessEnv | { DEEPSEEK_API_KEY?: string } = process.env,
+): { gateway: { byok: { deepseek: Array<{ apiKey: string }> } } } | undefined {
+	if (!modelId.startsWith("deepseek/")) return undefined;
+	const apiKey = env.DEEPSEEK_API_KEY?.trim();
+	if (!apiKey) return undefined;
+	return { gateway: { byok: { deepseek: [{ apiKey }] } } };
+}
+
 /** Gateway model ids are `creator/model` strings from the live catalog. */
 export function gatewayModelId(model: { provider: string; id: string; api?: string }): string {
 	if (model.provider === "vercel-ai-gateway" || model.id.includes("/")) return model.id;
@@ -254,6 +271,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 		};
 		try {
 			const modelId = gatewayModelId(model);
+			const providerOptions = deepseekByokOptions(modelId);
 			const customerId = gatewayCustomerId();
 			const restrictedKey = process.env.STRIPE_RESTRICTED_ACCESS_KEY?.trim();
 			const headers: Record<string, string> = {};
@@ -274,6 +292,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 			const reasoning = reasoningLevel(options?.reasoning as ThinkingLevel | undefined);
 			const result = streamText({
 				model: gateway(modelId),
+				...(providerOptions ? { providerOptions } : {}),
 				...(instructions ? { instructions } : {}),
 				...(messages.length > 0 ? { messages } : { prompt: "" }),
 				...(tools ? { tools } : {}),

@@ -16,7 +16,8 @@ import { enterKey } from "@/components/phone-layout";
 import { usePhoneLayout } from "@/components/phone-layout-context";
 import { PathInput } from "@/components/path-input";
 import { SessionStarter } from "@/components/start-session";
-import type { TurnUsage } from "@/src/core";
+import { TrialHomeOffer } from "@/components/trial-flow";
+import type { TrialPublicStatus, TurnUsage } from "@/src/core";
 import { useT } from "@/components/i18n";
 
 /**
@@ -28,12 +29,14 @@ import { useT } from "@/components/i18n";
 export function Home({
 	initialConfigured,
 	rendering = true,
+	trial = null,
 }: {
 	initialConfigured: boolean;
 	/** GRAPH RENDERING off (owner, 2026-10-06): the home's main view is
 	 * the chains view, not the canvas. Read server-side per navigation —
 	 * changing the setting applies on the next visit home. */
 	rendering?: boolean;
+	trial?: TrialPublicStatus | null;
 }) {
 	const router = useRouter();
 	const t = useT();
@@ -207,6 +210,11 @@ export function Home({
 				<div className="pointer-events-auto">
 					<SidebarToggle />
 				</div>
+				{trial?.participant && (
+					<div className="pointer-events-auto ml-2">
+						<TrialHomeOffer status={trial} />
+					</div>
+				)}
 			</header>
 
 			{/* New session — same floating blob as the chat composer, docked
