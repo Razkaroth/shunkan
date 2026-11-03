@@ -1,6 +1,7 @@
-/** Offline synthetic UI + actual Electron preload smoke. No providers/accounts.
+/** Offline synthetic UI smoke in system Chrome. No providers/accounts.
  * Run: node scripts/smoke-file-paths.mjs
- * App/profile/auth/OS-backed fixture files are temporary; only this script's
+ * This hosted fork does not launch Electron. --desktop-only is refused.
+ * App/profile/auth fixture files are temporary; only this script's
  * processes are stopped. Browser requests outside the owned origin are blocked.
  */
 import assert from "node:assert/strict";
@@ -28,7 +29,6 @@ const children = [];
 const browsers = [];
 const screenshots = [];
 let serverLogs = "";
-let electronLogs = "";
 let page;
 let origin;
 let shuttingDown = false;
@@ -200,6 +200,9 @@ async function foldDock(target, barSelector) {
 }
 
 try {
+	if (process.argv.includes("--desktop-only")) {
+		throw new Error("scripts/smoke-file-paths.mjs no longer launches Electron. Omit --desktop-only to run the hosted browser smoke.");
+	}
 	fs.mkdirSync(path.join(home, "data", "chats"), { recursive: true });
 	fs.writeFileSync(path.join(home, "auth.json"), "{}\n");
 	seedChatFixtures();
@@ -281,7 +284,7 @@ try {
 			return { height: element.getBoundingClientRect().height, caret: { top: rect.top, height: rect.height }, html: element.innerHTML };
 		});
 		// Record this independently so a visual editor regression does not hide
-		// the higher-priority actual Electron/target-routing evidence below.
+		// the target-routing checks below.
 		try { assert.ok(afterNewline.height > beforeNewline, `Trailing newline must occupy a visible blank line: ${JSON.stringify({ beforeNewline, afterNewline })}`); }
 		catch (error) { visualFailures.push({ route, message: error.message }); }
 		await page.keyboard.type("second line");
@@ -365,57 +368,13 @@ try {
 	assert.equal(posts.length, 1, "all claim/drop cases stage text only");
 
 	}
-	// Actual Electron main + actual sandboxed preload. Temporary launcher sets
-	// userData BEFORE production main appends its -dev suffix or takes a lock.
-	const debugPort = await freePort();
-	const launcher = path.join(home, "electron-launcher.cjs");
-	fs.mkdirSync(path.join(home, "desktop-profile"), { recursive: true });
-	fs.mkdirSync(path.join(home, "desktop-profile-dev"), { recursive: true });
-	fs.writeFileSync(launcher, `const {app,session}=require('electron');\napp.setPath('home',${JSON.stringify(home)});\napp.setPath('userData',${JSON.stringify(path.join(home, "desktop-profile"))});\napp.commandLine.appendSwitch('remote-debugging-port',${JSON.stringify(String(debugPort))});\napp.commandLine.appendSwitch('disable-background-networking');\napp.commandLine.appendSwitch('disable-sync');\napp.whenReady().then(()=>session.defaultSession.webRequest.onBeforeRequest((details,cb)=>{let u;try{u=new URL(details.url)}catch{return cb({cancel:true})}cb({cancel:!(${JSON.stringify(origin)}===u.origin||(u.protocol==='ws:'&&u.host===${JSON.stringify(new URL(origin).host)})||['about:','data:','devtools:'].includes(u.protocol))});}));\nrequire(${JSON.stringify(path.join(root, "electron", "main.cjs"))});\nconsole.log('LH_FILE_PATH_PROFILE '+JSON.stringify({home:app.getPath('home'),userData:app.getPath('userData')}));\n`);
-	const electron = spawn(require("electron"), [launcher], { cwd: root, env: { ...env, LH_DEV_URL: origin }, stdio: ["ignore", "pipe", "pipe"] }); children.push(electron);
-	const captureElectron = data => { electronLogs = (electronLogs + data).slice(-24000); }; electron.stdout.on("data", captureElectron); electron.stderr.on("data", captureElectron);
-	await startup(electron, () => electronLogs, /DevTools listening on (ws:\/\/[^\s]+)/, 45000);
-	const profile = JSON.parse(electronLogs.match(/LH_FILE_PATH_PROFILE ([^\r\n]+)/)[1]);
-	assert.equal(profile.home, home); assert.equal(profile.userData, path.join(home, "desktop-profile-dev"));
-	const desktopLaunch = { executable: require("electron"), args: [launcher], LH_DEV_URL: origin, HOME: home, userDataBeforeMain: path.join(home, "desktop-profile"), actualProfile: profile, cleanup: "all temporary profiles/data/fixtures removed on exit" };
-	const endpoint = electronLogs.match(/DevTools listening on (ws:\/\/[^\s]+)/)[1];
-	const desktop = await puppeteer.connect({ browserWSEndpoint: endpoint }); browsers.push(desktop);
-	const desktopPage = await desktop.waitForTarget(target => target.type() === "page").then(target => target.page());
-	await instrument(desktopPage); page = desktopPage;
-	await open(desktopPage, "/chat/new");
-	assert.equal(await desktopPage.evaluate(() => typeof window.lh?.getPathForFile), "function");
-	const fixturePath = path.join(home, "actual OS-backed α `notes`.pdf"); fs.writeFileSync(fixturePath, "%PDF-1.7\nsynthetic offline fixture\n");
-	await desktopPage.evaluate(() => { const input = document.createElement("input"); input.type = "file"; input.id = "os-backed-fixture"; document.body.append(input); });
-	await (await desktopPage.$("#os-backed-fixture")).uploadFile(fixturePath);
-	const resolved = await desktopPage.evaluate(() => {
-		const input = document.querySelector("#os-backed-fixture");
-		return { count: input.files.length, actual: window.lh.getPathForFile(input.files[0]), virtual: window.lh.getPathForFile(new File(["virtual"], "/not/a/backing/path.pdf")) };
-	});
-	assert.equal(resolved.count, 1); assert.equal(resolved.actual, fixturePath); assert.equal(resolved.virtual, "");
-	await fill(desktopPage, "readthis"); await caret(desktopPage, 4);
-	const beforeDesktopDrop = posts.length;
-	assert.equal(await desktopPage.evaluate(() => {
-		const file = document.querySelector("#os-backed-fixture").files[0];
-		for (const method of ["text", "arrayBuffer", "stream"]) Object.defineProperty(file, method, { value() { throw new Error("No file content read"); } });
-		const transfer = new DataTransfer(); transfer.items.add(file);
-		const event = new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer });
-		document.querySelector('[data-testid="file-path-drop-zone"]').dispatchEvent(event); return event.defaultPrevented;
-	}), true);
-	const expectedQuoted = "``" + fixturePath + "``";
-	await expectValue(desktopPage, `read ${expectedQuoted} this`);
-	assert.equal(await desktopPage.$eval('[data-file-path-input] [role="img"]', chip => chip.title), fixturePath);
-	assert.equal(posts.length, beforeDesktopDrop, "actual OS-backed desktop drop must stage only");
-	assert.equal(await desktopPage.$('[role="status"]'), null, "successful desktop attachment has no confirmation bubble");
-	assert.ok(fs.existsSync(fixturePath));
-	assert.deepEqual(fs.readdirSync(path.join(home, "data")).filter(name => /upload|attachment/i.test(name)), []);
-	checks.push("Actual Electron production preload: Puppeteer-selected OS-backed File resolves exact Unicode/backtick full path; virtual File returns empty; real DataTransfer drop inserts at caret without submit or file reads");
 	assert.deepEqual(errors, []);
-	console.log(JSON.stringify({ checks, visualFailures, coverageFailures, screenshots, desktopLaunch, postsIntercepted: posts.length, blockedExternalRequests: blocked, isolation: "temporary HOME/data/auth/browser+Electron profiles; synthetic catalog; agent POSTs refused; no providers", origin }, null, 2));
+	console.log(JSON.stringify({ checks, visualFailures, coverageFailures, screenshots, postsIntercepted: posts.length, blockedExternalRequests: blocked, isolation: "temporary HOME/data/auth/browser profile; synthetic catalog; agent POSTs refused; no providers", origin }, null, 2));
 	assert.deepEqual(visualFailures, [], "Visible trailing-newline/caret projection must pass");
 	assert.deepEqual(coverageFailures, [], "Required collapsed target coverage must run");
 } catch (error) {
 	console.error(error);
-	console.error(JSON.stringify({ checks, visualFailures, coverageFailures, errors, consoleErrors, networkFailures: networkFailures.slice(-30), posts, origin, url: page?.url(), dom: await page?.evaluate(() => ({ inputs: [...document.querySelectorAll('[data-file-path-input]')].map(element => ({ placeholder: element.getAttribute("data-placeholder"), text: element.textContent, html: element.innerHTML.slice(0, 1200) })), text: document.body.innerText.slice(-2600) })).catch(() => null), serverLogs, electronLogs }, null, 2));
+	console.error(JSON.stringify({ checks, visualFailures, coverageFailures, errors, consoleErrors, networkFailures: networkFailures.slice(-30), posts, origin, url: page?.url(), dom: await page?.evaluate(() => ({ inputs: [...document.querySelectorAll('[data-file-path-input]')].map(element => ({ placeholder: element.getAttribute("data-placeholder"), text: element.textContent, html: element.innerHTML.slice(0, 1200) })), text: document.body.innerText.slice(-2600) })).catch(() => null), serverLogs }, null, 2));
 	process.exitCode = 1;
 } finally {
 	shuttingDown = true;
