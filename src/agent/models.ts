@@ -172,7 +172,8 @@ export function piEngineForSpec(spec: ResolvedModelSpec, background: boolean | (
 		// The Pi agent still executes tools; the SDK only returns the call.
 		streamFn: (requestModel, context, options) => gatewayStream(requestModel, context, {
 			...options,
-			reasoning: resolved.level === "off" ? undefined : resolved.level,
+			// "off" stays "off" so the gateway sends reasoning "none" instead of the model default.
+			reasoning: resolved.level,
 		}),
 	};
 }

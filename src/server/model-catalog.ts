@@ -38,7 +38,7 @@ function connectionModel(provider: string, id: string): Model<Api> | undefined {
 function connectionProviderIds(): string[] { return [...piModels().getProviders().map((p) => p.id), "chatgpt", ...NATIVE_SUBSCRIPTIONS.map((p) => p.logicalId)]; }
 import { settingsStore } from "../store/settings.ts";
 import { effectiveSettings } from "./stores.ts";
-import { keyValue } from "./keys.ts";
+import { gatewayKeyPresent, keyValue } from "./keys.ts";
 import type { ChatSettings } from "../core/contracts/chat.ts";
 import type {
 	CatalogDefaults,
@@ -151,7 +151,7 @@ export function catalogProviders(): CatalogProvider[] {
 	return AUTH_PROVIDER_KEYS.map((p) => ({
 		id: p.id,
 		envVar: p.envVar,
-		keyPresent: keyValue(p.envVar) !== undefined,
+		keyPresent: p.id === "vercel-ai-gateway" ? gatewayKeyPresent() : keyValue(p.envVar) !== undefined,
 	})).concat([
 		{ id: "chatgpt", envVar: "", keyPresent: chatGPTConnected() },
 		{ id: CLAUDE_CODE_PROVIDER, envVar: "", keyPresent: claudeCodeAvailable() },

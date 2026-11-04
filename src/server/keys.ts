@@ -190,12 +190,18 @@ export function keyValue(id: string): string | undefined {
 	return process.env[id] ?? authStore.authVars()[id];
 }
 
+/** The gateway can authenticate with its API key or with Vercel OIDC. */
+export function gatewayKeyPresent(): boolean {
+	return keyValue("AI_GATEWAY_API_KEY") !== undefined || process.env.VERCEL === "1";
+}
+
 /** The key-presence truth for one model provider (provider-key interlude,
  * 2026-09-25): would this provider's key be present at request time?
  * Reads through keyValue — the SAME env-first lookup pi-ai performs
  * natively at every request — so an env-shadowed key counts as present
- * (gate by what would run). Providers absent from AUTH_PROVIDER_KEYS take
- * no key at all: nothing to gate, present by definition. */
+ * (gate by what would run). A ready AI Gateway also admits those providers,
+ * because model calls no longer use their keys. Providers absent from
+ * AUTH_PROVIDER_KEYS take no key at all: nothing to gate, present by definition. */
 export function providerKeyPresent(provider: string): boolean {
 	if (provider === CUSTOM_PROVIDER.id) return customProviderAvailable();
 	// Explicit opt-in + installation only, never authentication readiness.
@@ -203,6 +209,9 @@ export function providerKeyPresent(provider: string): boolean {
 	if (provider === CLAUDE_CODE_PROVIDER) return claudeCodeAvailable();
 	if (isSubscriptionProvider(provider)) return subscriptionConnected(provider);
 	const info = AUTH_PROVIDER_KEYS.find((p) => p.id === provider);
+	if (info?.id === "vercel-ai-gateway") return gatewayKeyPresent();
+	// Model calls use the gateway, so a ready gateway admits a saved provider pin.
+	if (info && gatewayKeyPresent()) return true;
 	return info ? keyValue(info.envVar) !== undefined : true;
 }
 

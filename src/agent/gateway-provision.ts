@@ -42,6 +42,15 @@ const PROVIDER_CREATOR: Record<string, string> = {
 	"claude-code": "anthropic",
 };
 
+/** Creators in the installed AI Gateway catalog. An unknown provider name is not a creator. */
+const GATEWAY_CREATORS = new Set([
+	"alibaba", "amazon", "anthropic", "arcee-ai", "bytedance", "callstack", "cohere", "deepseek",
+	"fireworks", "google", "inception", "inclusionai", "interfaze", "liquid", "meituan", "meta",
+	"minimax", "mistral", "mixedbread", "moonshotai", "nvidia", "openai", "poolside", "quiverai",
+	"reflection", "sakana", "spacexai", "stealth", "stepfun", "tencent", "thinkingmachines",
+	"xiaomi", "zai",
+]);
+
 let customerLookup: () => string | undefined = () => undefined;
 
 /** Server boot installs the profile lookup. Tests can replace it. */
@@ -60,17 +69,16 @@ export function gatewayCustomerId(): string | undefined {
 
 /** Gateway model ids are `creator/model` strings from the live catalog. */
 export function gatewayModelId(model: { provider: string; id: string; api?: string }): string {
-	if (model.provider === "vercel-ai-gateway" || model.id.includes("/")) return model.id;
 	if (model.provider === "custom") {
 		throw new Error("Custom endpoints are not used for model calls. Select an AI Gateway model.");
 	}
-	if (model.provider === "github-copilot" || model.provider === "github-copilot-subscription") {
-		const creator = model.api?.startsWith("anthropic") ? "anthropic"
-			: model.api?.includes("google") ? "google"
-			: "openai";
-		return `${creator}/${model.id}`;
+	if (model.provider === "vercel-ai-gateway" || model.id.includes("/")) return model.id;
+	const creator = model.provider === "github-copilot" || model.provider === "github-copilot-subscription"
+		? (model.api?.startsWith("anthropic") ? "anthropic" : model.api?.includes("google") ? "google" : "openai")
+		: PROVIDER_CREATOR[model.provider] ?? model.provider;
+	if (!GATEWAY_CREATORS.has(creator)) {
+		throw new Error(`AI Gateway has no creator for ${model.provider}. Select an AI Gateway model.`);
 	}
-	const creator = PROVIDER_CREATOR[model.provider] ?? model.provider;
 	return `${creator}/${model.id}`;
 }
 
@@ -158,15 +166,27 @@ function toMessages(context: TranscriptContext): ModelMessage[] {
 			continue;
 		}
 		const text = message.content.map((part) => part.type === "text" ? part.text : "").join("");
+		const images = message.content.flatMap((part) => part.type === "image"
+			? [{ type: "file" as const, data: { type: "data" as const, data: part.data }, mediaType: part.mimeType }]
+			: []);
+		const output = message.isError
+			? { type: "error-text" as const, value: text || "Tool failed" }
+			: images.length === 0
+				? { type: "text" as const, value: text }
+				: {
+					type: "content" as const,
+					value: [
+						...(text ? [{ type: "text" as const, text }] : []),
+						...images,
+					],
+				};
 		messages.push({
 			role: "tool",
 			content: [{
 				type: "tool-result",
 				toolCallId: message.toolCallId,
 				toolName: message.toolName,
-				output: message.isError
-					? { type: "error-text", value: text || "Tool failed" }
-					: { type: "text", value: text },
+				output,
 			}],
 		});
 	}
@@ -238,7 +258,7 @@ function asArguments(input: unknown): { arguments: JsonObject; argumentsError?: 
 }
 
 /** One Pi agent step, streamed through the AI SDK gateway. Tools are not executed here. */
-export function gatewayStream(model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream {
+export function gatewayStream(model: Model<Api>, context: TranscriptContext, options?: Omit<SimpleStreamOptions, "reasoning"> & { reasoning?: ThinkingLevel }): AssistantMessageEventStream {
 	const output = new AssistantMessageEventStream();
 	const partial = emptyMessage(model);
 	void (async () => {
@@ -271,7 +291,9 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 			})]));
 			const messages = toMessages(context);
 			const instructions = systemInstructions(context);
-			const reasoning = reasoningLevel(options?.reasoning as ThinkingLevel | undefined);
+			const requested = reasoningLevel(options?.reasoning as ThinkingLevel | undefined);
+			// Non-reasoning models have no effort setting. "none" is only for models that would otherwise reason.
+			const reasoning = !model.reasoning && requested === "none" ? undefined : requested;
 			const result = streamText({
 				model: gateway(modelId),
 				...(instructions ? { instructions } : {}),

@@ -31,7 +31,7 @@ Secrets and machine-specific paths may be supplied through the process environme
 | Configuration | Purpose |
 |---|---|
 | `AI_GATEWAY_API_KEY` | Provisions model calls through the Vercel AI Gateway. Optional on Vercel, where OIDC can authenticate instead. |
-| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not a secret key, and not used to create charges here. |
+| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges here. |
 | Profile `stripeCustomerId` | Optional `cus_…` on a profile, set by the admin. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
 | `DEEPGRAM_API_KEY` | Optional dictation: short-lived token minting on the server; audio streams directly from the browser to Deepgram. |

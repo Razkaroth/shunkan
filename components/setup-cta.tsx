@@ -104,7 +104,10 @@ export function ZeroKeysPill({ onOpen, inline = false }: { onOpen: () => void; i
 export function strongKeyless(catalog: ModelCatalogResponse | undefined): boolean {
 	const strong = catalog?.slots.strong;
 	if (!strong) return false;
-	return !catalog.providers.some((p) => p.id === strong.model.provider && p.keyPresent);
+	if (catalog.providers.some((p) => p.id === strong.model.provider && p.keyPresent)) return false;
+	// The gateway serves a saved pin without that provider's own key. Custom endpoints still do not.
+	const gateway = catalog.providers.some((p) => p.id === "vercel-ai-gateway" && p.keyPresent);
+	return !gateway || strong.model.provider === "custom";
 }
 
 /** The strong-slot keyless truth for the PRE-SEND guard (home / /chat/new):

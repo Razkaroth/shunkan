@@ -114,7 +114,7 @@ test("explicit native preferences win over environment; resetting to default res
 });
 
 test("a conversation calls AI Gateway with the chat model, not the Strong slot model", async () => {
-	const id = "cache-chat-fixture";
+	const id = "zai";
 	const faux = createFauxCore({});
 	const entry = { ...faux.getModel(), provider: id, id: "chat-model" };
 	const seen: string[] = [];

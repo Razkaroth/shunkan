@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { after, describe, test } from "node:test";
-import { normalizeContext } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, normalizeContext } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-gateway-"));
@@ -46,6 +46,8 @@ describe("AI Gateway provisioning", { concurrency: false }, () => {
 		assert.equal(gatewayModelId({ provider: "github-copilot-subscription", id: "claude-sonnet-5", api: "anthropic-messages" }), "anthropic/claude-sonnet-5");
 		assert.equal(gatewayModelId({ provider: "openrouter", id: "openai/gpt-4o-mini" }), "openai/gpt-4o-mini");
 		assert.throws(() => gatewayModelId({ provider: "custom", id: "local-llama" }), /Custom endpoints are not used/);
+		assert.throws(() => gatewayModelId({ provider: "custom", id: "openai/gpt-4o-mini" }), /Custom endpoints are not used/);
+		assert.throws(() => gatewayModelId({ provider: "opencode-go", id: "glm-5.3" }), /no creator/);
 	});
 
 	test("the engine streams through AI Gateway and sends Stripe meter headers for the active profile", async () => {
@@ -91,6 +93,35 @@ describe("AI Gateway provisioning", { concurrency: false }, () => {
 		assert.equal(headers.get("authorization")?.includes("sk-must-not-be-sent"), false);
 		assert.equal(headers.get("ai-language-model-id"), gatewayModelId(model));
 		assert.equal(body.includes("sk-must-not-be-sent"), false);
+		if (model.reasoning) assert.match(body, /"reasoning":"none"/);
+		else assert.equal(body.includes('"reasoning"'), false);
+	});
+
+	test("an off reasoning level is sent as none, and image tool results stay in the request", async () => {
+		process.env.AI_GATEWAY_API_KEY = "gateway-test-key";
+		// Some reasoning models cannot represent "off" (the catalog clamps it to the nearest effort). This checks a model that can.
+		const reasoning = ["anthropic", "openai", "google"].flatMap((id) => piModels().getModels(id)).find((model) => model.reasoning && getSupportedThinkingLevels(model).includes("off"));
+		assert.ok(reasoning);
+		let bodies: string[] = [];
+		globalThis.fetch = async (input, init) => {
+			const request = new Request(input, init);
+			bodies.push(await request.text());
+			return new Response(JSON.stringify({ error: { message: "fixture" } }), { status: 401, headers: { "content-type": "application/json" } });
+		};
+		const engine = piEngineForSpec({ provider: reasoning.provider, id: reasoning.id, thinkingLevel: "off" });
+		await engine.streamFn(engine.model, normalizeContext({ messages: [{ role: "user", content: "offline", timestamp: 1 }] }), {}).result();
+		assert.match(bodies[0] ?? "", /"reasoning":"none"/);
+		const image = { type: "image" as const, data: "aaaa", mimeType: "image/png" };
+		await engine.streamFn(engine.model, normalizeContext({
+			messages: [
+				{ role: "user", content: "look", timestamp: 1 },
+				{ role: "assistant", content: [{ type: "toolCall", id: "read-1", name: "read", arguments: {} }], timestamp: 2, stopReason: "toolUse", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, api: engine.model.api, provider: engine.model.provider, model: engine.model.id },
+				{ role: "toolResult", toolCallId: "read-1", toolName: "read", content: [{ type: "text", text: "Read image file" }, image], isError: false, timestamp: 3 },
+			],
+		}), {}).result();
+		assert.match(bodies[1] ?? "", /image\/png/);
+		assert.match(bodies[1] ?? "", /aaaa/);
+		assert.equal((bodies[1] ?? "").includes("Read image file"), true);
 	});
 
 	test("only an admin can store a Stripe customer id, and the public profile omits it", () => {
