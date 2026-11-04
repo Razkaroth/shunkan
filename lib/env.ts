@@ -26,6 +26,14 @@ const schema = z.object({
 	TRIAL_INVITE_CODE: z.string().min(1).optional(),
 	/** Restricted Stripe key (rk_…) with Billing meter events write. The gateway sends meter events; this app does not. */
 	STRIPE_RESTRICTED_ACCESS_KEY: z.string().min(1).optional(),
+	/** Restricted key for Checkout, credit grants, and balance reads. Separate from the meter-write key. */
+	STRIPE_BILLING_RESTRICTED_KEY: z.string().min(1).optional(),
+	/** Signing secret for /api/billing/webhook. */
+	STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
+	/** Licensed recurring price: 150 MXN per month. */
+	STRIPE_BASIC_PRICE_ID: z.string().min(1).optional(),
+	/** Metered price on the existing meter `token-billing-tokens`, currency MXN. */
+	STRIPE_TOKEN_PRICE_ID: z.string().min(1).optional(),
 });
 
 export type AppEnv = z.infer<typeof schema>;
@@ -53,5 +61,9 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
 		DEEPSEEK_API_KEY: source.DEEPSEEK_API_KEY,
 		TRIAL_INVITE_CODE: source.TRIAL_INVITE_CODE,
 		STRIPE_RESTRICTED_ACCESS_KEY: source.STRIPE_RESTRICTED_ACCESS_KEY,
+		STRIPE_BILLING_RESTRICTED_KEY: source.STRIPE_BILLING_RESTRICTED_KEY,
+		STRIPE_WEBHOOK_SECRET: source.STRIPE_WEBHOOK_SECRET,
+		STRIPE_BASIC_PRICE_ID: source.STRIPE_BASIC_PRICE_ID,
+		STRIPE_TOKEN_PRICE_ID: source.STRIPE_TOKEN_PRICE_ID,
 	});
 }

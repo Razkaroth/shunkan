@@ -13,6 +13,7 @@ export const settings: Record<keyof typeof en, string> = {
 	"settings.section.keyboard": "Teclado",
 	"settings.section.keyboard.hint": "Se guarda en este dispositivo",
 	"settings.section.users": "Usuarios",
+	"settings.section.billing": "Facturación",
 	"settings.section.general": "General",
 	"settings.general.autoUpdate": "Actualización automática",
 	"settings.general.autoUpdate.aria": "actualización automática",
@@ -304,4 +305,20 @@ export const settings: Record<keyof typeof en, string> = {
 	// Models: advanced toggle
 	"settings.agent.advanced.hide": "Ocultar ajustes avanzados",
 	"settings.agent.advanced.show": "Mostrar ajustes avanzados",
+
+	"settings.billing.loading": "Cargando facturación…",
+	"settings.billing.unavailable": "La facturación no está configurada en este servidor.",
+	"settings.billing.plan": "Básico",
+	"settings.billing.planPrice": "150 MXN al mes",
+	"settings.billing.split": "75 MXN son la asignación mensual de tokens. No se acumula.",
+	"settings.billing.monthly": "Tokens del mes",
+	"settings.billing.rechargeBalance": "Recarga",
+	"settings.billing.rechargeHint": "La recarga no caduca y se gasta después de la asignación mensual.",
+	"settings.billing.subscribe": "Suscribirse",
+	"settings.billing.recharge": "Recargar",
+	"settings.billing.amount": "Monto en MXN",
+	"settings.billing.working": "Abriendo el pago…",
+	"settings.billing.failed": "No se pudo abrir el pago.",
+	"settings.billing.paygOn": "El pago por uso está activo. Lo que exceda tus créditos se factura.",
+	"settings.billing.empty": "No quedan tokens del mes ni recarga.",
 };

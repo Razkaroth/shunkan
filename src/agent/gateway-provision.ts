@@ -30,6 +30,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { AssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import { SpendBlockedError } from "../core/billing.ts";
 
 const STRIPE_CUSTOMER = "stripe-customer-id";
 const STRIPE_RESTRICTED_KEY = "stripe-restricted-access-key";
@@ -52,10 +53,16 @@ const GATEWAY_CREATORS = new Set([
 ]);
 
 let customerLookup: () => string | undefined = () => undefined;
+let spendGuard: () => Promise<void> = async () => {};
 
 /** Server boot installs the profile lookup. Tests can replace it. */
 export function configureGatewayCustomer(lookup: () => string | undefined): void {
 	customerLookup = lookup;
+}
+
+/** Server boot installs the credit decision. The default allows the call. */
+export function configureSpendGuard(guard: () => Promise<void>): void {
+	spendGuard = guard;
 }
 
 export function gatewayCustomerId(): string | undefined {
@@ -265,6 +272,7 @@ function usageFrom(model: Model<Api>, usage: {
 
 function publicError(err: unknown, aborted: boolean): string {
 	if (aborted) return "AI Gateway request cancelled.";
+	if (err instanceof SpendBlockedError) return err.message;
 	const cause = err instanceof Error ? err.cause : undefined;
 	const api = APICallError.isInstance(err) ? err : APICallError.isInstance(cause) ? cause : undefined;
 	if (api?.statusCode === 401) return "AI Gateway rejected the credential. Set AI_GATEWAY_API_KEY, or deploy on Vercel so OIDC can authenticate.";
@@ -305,6 +313,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 			output.push({ type: "error", reason: partial.stopReason, error: partial });
 		};
 		try {
+			await spendGuard();
 			const modelId = gatewayModelId(model);
 			const providerOptions = deepseekByokOptions(modelId);
 			const customerId = gatewayCustomerId();

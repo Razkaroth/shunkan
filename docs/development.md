@@ -33,8 +33,12 @@ Secrets and machine-specific paths may be supplied through the process environme
 | `AI_GATEWAY_API_KEY` | Provisions model calls through the Vercel AI Gateway. Optional on Vercel, where OIDC can authenticate instead. |
 | `DEEPSEEK_API_KEY` | Owner DeepSeek key. Trial calls to DeepSeek send it as gateway BYOK so they spend DeepSeek credits. If it is unset, the gateway uses a DeepSeek credential already saved on the AI Gateway dashboard. |
 | `TRIAL_INVITE_CODE` | The one university-trial invite. Absent means nobody can redeem it. Shorter than 8 characters is refused. |
-| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges here. The trial does not create a price or a student billing product. |
-| Profile `stripeCustomerId` | Optional `cus_…` on a profile, set by the admin. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
+| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges. |
+| `STRIPE_BILLING_RESTRICTED_KEY` | Optional restricted key for Checkout, customers, subscriptions, credit grants, and credit-balance reads. Separate from the meter-write key. When it is set, a profile with a Stripe customer is gated: monthly allotment, then recharge, then pay as you go only if that flag is on. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for `POST /api/billing/webhook`. |
+| `STRIPE_BASIC_PRICE_ID` | Licensed recurring price of 150 MXN per month. |
+| `STRIPE_TOKEN_PRICE_ID` | Metered price, currency MXN, on the existing meter `token-billing-tokens`. Credit grants apply only to this price. |
+| Profile `stripeCustomerId` | Optional `cus_…` on a profile. Checkout stores it when the payment succeeds. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
 | `DEEPGRAM_API_KEY` | Optional dictation: short-lived token minting on the server; audio streams directly from the browser to Deepgram. |
 | `CHROME_PATH` | Optional Chrome/Chromium executable fallback for demo verification. The Electron browser helper is primary; no extra Chromium is downloaded. PDFs/SVGs use native rendering. |
@@ -68,6 +72,22 @@ Profiles are **local profiles, not accounts**. A profile's PIN only stops someon
 ### University trial
 
 `TRIAL_INVITE_CODE` is one code, at least 8 characters. The owner profile has to exist first. Redeeming the code creates a member profile, not an admin, and pins the main agent and both support tiers to DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) through the AI Gateway. Those calls send `DEEPSEEK_API_KEY` as request-scoped BYOK when the key is set, so they spend the owner's DeepSeek credits. The same trial includes one GPT-Sol chat on `openai/gpt-6.1-sol`. That session ends when its first reply lands, or when the friend ends it. Until they sign up, further turns, new chats, and note imports are refused. The signup creates one Better Auth user and leaves public email signup disabled. It does not create a Stripe price or a student billing system. GPT-Sol is billed by the gateway; this app does not name a price for it.
+
+### Pricing
+
+Basic is a licensed subscription of 150 MXN per month (`STRIPE_BASIC_PRICE_ID`). Half of that payment, 75 MXN, is a Billing Credit Grant created from `invoice.paid` (`subscription_create` and `subscription_cycle`). The grant applies only to `STRIPE_TOKEN_PRICE_ID`, the metered price on the existing meter `token-billing-tokens`, and it expires at the end of the period. The other 75 MXN is the licensed charge, which the grant cannot reduce. That is the revenue.
+
+Recharge is a one-time Checkout payment. The full amount becomes a credit grant with no expiry and a lower Stripe priority, so it is spent after the monthly grant. Settings → Billing starts both checkouts. `POST /api/billing/webhook` must receive `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `invoice.paid`.
+
+Before a metered model call, the server reads the Payload global `feature-flags`, checkbox `payAsYouGo` (default false), in `payAsYouGoEnabled`. The decision in `decideSpend` is monthly tokens, then recharge, then pay as you go only when that checkbox is on. When it is off and both pools are empty, the call is not sent.
+
+Dashboard setup that this repo cannot create for you:
+
+1. Keep the meter event name `token-billing-tokens` with dimensions `model` and `token_type`. Do not create a second meter.
+2. Create a licensed recurring price of 150.00 MXN per month and set `STRIPE_BASIC_PRICE_ID`.
+3. Create a metered price in MXN on that same meter and set `STRIPE_TOKEN_PRICE_ID`. Its unit amount is the MXN value of one token; the 75 MXN allotment buys however many tokens that price allows.
+4. Create a restricted key that can write customers, Checkout Sessions, subscriptions, subscription items, credit grants, and invoices, and can read credit balance summaries. Set it as `STRIPE_BILLING_RESTRICTED_KEY`. Leave `STRIPE_RESTRICTED_ACCESS_KEY` as the meter-events-only key the gateway sends.
+5. Add the webhook endpoint `https://<host>/api/billing/webhook` for the three events above and set `STRIPE_WEBHOOK_SECRET`.
 
 ## Source map
 
