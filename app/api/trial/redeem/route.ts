@@ -1,5 +1,5 @@
 /** Redeem the one university-trial invite. Signs the browser in as that friend. */
-import { redeemTrialCode, sessionCookieHeader, trialErrorResponse } from "@/src/server";
+import { redeemTrialCode, sessionCookieHeader, trialBrowserAllowed, trialErrorResponse } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +11,7 @@ export async function POST(req: Request) {
 		pin?: unknown;
 		language?: unknown;
 	};
+	if (!trialBrowserAllowed(req)) return Response.json({ error: "Open this from LearnHarness." }, { status: 403 });
 	try {
 		const { profileId, sessionId } = redeemTrialCode(req, body);
 		const headers = sessionId ? { "Set-Cookie": sessionCookieHeader(sessionId) } : undefined;

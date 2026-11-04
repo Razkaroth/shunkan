@@ -226,6 +226,7 @@ export function Chat({
 	initiallyCompacting = false,
 	initialConfigured = false,
 	kind = "teach",
+	trialParticipant = false,
 }: {
 	chatId: string;
 	title: string;
@@ -249,6 +250,8 @@ export function Chat({
 	 *  it (BYOK, owner 2026-09-22). The server gate stays the truth; this
 	 *  only decides whether the pill rides the composer. */
 	initialConfigured?: boolean;
+	/** This profile is the university-trial friend. Their calls use the gateway, not a local provider key. */
+	trialParticipant?: boolean;
 }) {
 	const t = useT();
 	// Reattach plumbing (background-turn runner wave): the hook holds the
@@ -1222,11 +1225,11 @@ export function Chat({
 		if (busy || pending || compacting) return;
 		const t = textRef.current.trim();
 		if (!t) return;
-		if (zeroKeys) {
+		if (zeroKeys && !trialParticipant) {
 			setSetupOpen(true);
 			return;
 		}
-		if (selectedModelUnavailable(catalog, selectedModel)) {
+		if (!trialParticipant && selectedModelUnavailable(catalog, selectedModel)) {
 			openModelPicker();
 			return; // No optimistic send and no change to the learner's draft.
 		}

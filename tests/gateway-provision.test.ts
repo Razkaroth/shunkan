@@ -46,6 +46,8 @@ describe("AI Gateway provisioning", { concurrency: false }, () => {
 		assert.equal(gatewayModelId({ provider: "github-copilot-subscription", id: "claude-sonnet-5", api: "anthropic-messages" }), "anthropic/claude-sonnet-5");
 		assert.equal(gatewayModelId({ provider: "openrouter", id: "openai/gpt-4o-mini" }), "openai/gpt-4o-mini");
 		assert.throws(() => gatewayModelId({ provider: "custom", id: "local-llama" }), /Custom endpoints are not used/);
+		assert.throws(() => gatewayModelId({ provider: "custom", id: "local/llama" }), /Custom endpoints are not used/);
+		assert.throws(() => gatewayModelId({ provider: "opencode-go", id: "gpt-6-luna" }), /not on the AI Gateway/);
 	});
 
 	test("the engine streams through AI Gateway and sends Stripe meter headers for the active profile", async () => {

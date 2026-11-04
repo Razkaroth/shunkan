@@ -75,12 +75,23 @@ export function deepseekByokOptions(
 	return { gateway: { byok: { deepseek: [{ apiKey }] } } };
 }
 
+/** Providers that must not be sent to the gateway. */
+export function gatewayRefusedProvider(provider: string): string | undefined {
+	if (provider === "custom") return "Custom endpoints are not used for model calls. Select an AI Gateway model.";
+	if (provider === "opencode" || provider === "opencode-go") return "OpenCode models are not on the AI Gateway. Select a gateway model.";
+	return undefined;
+}
+
+/** Production calls authenticate at the gateway. The provider's own key is not that credential. */
+export function gatewayAuthenticates(provider: string): boolean {
+	return gatewayRefusedProvider(provider) === undefined;
+}
+
 /** Gateway model ids are `creator/model` strings from the live catalog. */
 export function gatewayModelId(model: { provider: string; id: string; api?: string }): string {
+	const refused = gatewayRefusedProvider(model.provider);
+	if (refused) throw new Error(refused);
 	if (model.provider === "vercel-ai-gateway" || model.id.includes("/")) return model.id;
-	if (model.provider === "custom") {
-		throw new Error("Custom endpoints are not used for model calls. Select an AI Gateway model.");
-	}
 	if (model.provider === "github-copilot" || model.provider === "github-copilot-subscription") {
 		const creator = model.api?.startsWith("anthropic") ? "anthropic"
 			: model.api?.includes("google") ? "google"
@@ -174,6 +185,7 @@ function toMessages(context: TranscriptContext): ModelMessage[] {
 			if (typeof content !== "string" && content.length > 0) messages.push({ role: "assistant", content });
 			continue;
 		}
+		if (message.role !== "toolResult") continue;
 		const text = message.content.map((part) => part.type === "text" ? part.text : "").join("");
 		messages.push({
 			role: "tool",
@@ -186,6 +198,10 @@ function toMessages(context: TranscriptContext): ModelMessage[] {
 					: { type: "text", value: text },
 			}],
 		});
+		const images = message.content.flatMap((part) => part.type === "image"
+			? [{ type: "file" as const, data: part.data, mediaType: part.mimeType }]
+			: []);
+		if (images.length > 0) messages.push({ role: "user", content: images });
 	}
 	return messages;
 }
@@ -255,7 +271,7 @@ function asArguments(input: unknown): { arguments: JsonObject; argumentsError?: 
 }
 
 /** One Pi agent step, streamed through the AI SDK gateway. Tools are not executed here. */
-export function gatewayStream(model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions): AssistantMessageEventStream {
+export function gatewayStream(model: Model<Api>, context: TranscriptContext, options?: Omit<SimpleStreamOptions, "reasoning"> & { reasoning?: ThinkingLevel }): AssistantMessageEventStream {
 	const output = new AssistantMessageEventStream();
 	const partial = emptyMessage(model);
 	void (async () => {
@@ -289,7 +305,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 			})]));
 			const messages = toMessages(context);
 			const instructions = systemInstructions(context);
-			const reasoning = reasoningLevel(options?.reasoning as ThinkingLevel | undefined);
+			const reasoning = reasoningLevel(options?.reasoning);
 			const result = streamText({
 				model: gateway(modelId),
 				...(providerOptions ? { providerOptions } : {}),

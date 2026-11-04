@@ -31,6 +31,7 @@ import { runPiTurn } from "./pi/ui-stream.ts";
 import { collectToolCallIds } from "./pi/call-ids.ts";
 import { providerEventNote } from "../agent/provider-events.ts";
 import { effectiveSettings, stores } from "./stores.ts";
+import { gatewayAuthenticates, gatewayRefusedProvider } from "../agent/gateway-provision.ts";
 import { noteSolSessionEnded, trialBlockResponse, trialMainModel } from "./trial.ts";
 import { searchAvailable, searchProvider } from "./search.ts";
 import { providerKeyPresent } from "./keys.ts";
@@ -89,6 +90,15 @@ function connectionBackgroundAllowed(provider: string): boolean {
 	return subscriptionBackgroundAllowed(provider) && (provider !== CLAUDE_CODE_PROVIDER || providerKeyPresent(provider));
 }
 
+/** Gateway calls authenticate at the gateway, including OIDC when no API key
+ *  is set. Refused providers still fail here. DEEPSEEK_API_KEY is BYOK, not
+ *  this check. */
+function admissionRefusal(provider: string, tier: ModelSlotName): ProviderKeyMissing | null {
+	if (gatewayRefusedProvider(provider)) return providerKeyMissingEnvelope(provider, [tier]);
+	if (gatewayAuthenticates(provider)) return null;
+	return providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]);
+}
+
 function settlementErrorText(error: unknown): string {
 	return error instanceof TurnPersistenceError ? error.message : "An error occurred.";
 }
@@ -107,8 +117,7 @@ const jobRunner = createJobRunner({
 	// reads the resolved engine's provider and asks THIS check (the agent
 	// layer may not read the key store); a missing key refuses the spawn
 	// with the 503-envelope family instead of dying mid-run.
-	providerKeyMissing: (provider, tier) =>
-		providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]),
+	providerKeyMissing: (provider, tier) => admissionRefusal(provider, tier),
 	// Search port wave (2026-09-20): the researcher's web_search runs on the
 	// injected port — resolved FRESH per job (key rotations land immediately).
 	// null = honestly unavailable; the dispatch-level drop (below) uses the
@@ -130,8 +139,7 @@ export const extraction = createExtractionPipeline({
 	// Key-presence gate (provider-key interlude, 2026-09-25): same check
 	// the job runner gets — a stage engine whose provider key is gone
 	// refuses BEFORE any batch runs (the typed throw), never mid-run.
-	providerKeyMissing: (provider, tier) =>
-		providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]),
+	providerKeyMissing: (provider, tier) => admissionRefusal(provider, tier),
 	language: () => effectiveSettings().general.language,
 });
 
@@ -259,10 +267,14 @@ export async function handleChatInput(
 			return Response.json({ error: "Background use is off for this connection. Automatic follow-up remains deferred in its queue." }, { status: 403 });
 		}
 	}
-	if (!providerKeyPresent(conversation.provider)) {
-		const envelope = providerKeyMissingEnvelope(conversation.provider, ["strong"]);
-		console.info(`[chat ${chatId}] turn refused — ${JSON.stringify(envelope)}`);
-		return Response.json(envelope, { status: 503 });
+	const refusedProvider = gatewayRefusedProvider(conversation.provider);
+	if (refusedProvider) {
+		return Response.json({ error: refusedProvider }, { status: 400 });
+	}
+	const missingKey = admissionRefusal(conversation.provider, "strong");
+	if (missingKey) {
+		console.info(`[chat ${chatId}] turn refused — ${JSON.stringify(missingKey)}`);
+		return Response.json(missingKey, { status: 503 });
 	}
 
 	// THE COMPACTION GATE (owner round 14, 2026-10-05 — the structural
@@ -657,7 +669,11 @@ export async function handleChatInput(
 				if (process.env.NODE_ENV !== "test" && (!requestCycle || requestCycle.dispatched))
 					kickCompaction(() => {
 						const fresh = effectiveSettings();
-						const spec = resolveConversationSpec(stores.chatStore.getChat(chatId)?.settings, fresh.models.strong);
+						const saved = resolveConversationSpec(stores.chatStore.getChat(chatId)?.settings, fresh.models.strong);
+						const forced = trialMainModel(chatId);
+						const spec = forced
+							? { provider: forced.provider, id: forced.id, thinkingLevel: saved?.thinkingLevel }
+							: saved;
 						if (!spec || !connectionBackgroundAllowed(spec.provider)) return null;
 						let kickEngine: PiEngine;
 						try { kickEngine = piEngineForSpec(spec, true, undefined, retentionForSlot("strong")); } catch { return null; }

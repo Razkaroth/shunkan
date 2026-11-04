@@ -35,6 +35,8 @@ export interface TrialRecord {
 	/** Better Auth user id from the trial signup. Not a billing customer. */
 	accountId?: string;
 	signedUpAt?: string;
+	/** Set while the one account is being created. Cleared on success or failure. */
+	signupPendingAt?: string;
 }
 
 export const EMPTY_TRIAL: TrialRecord = { version: 1 };

@@ -130,17 +130,22 @@ export function TrialSignup() {
 		event.preventDefault();
 		setBusy(true);
 		setError(null);
-		const res = await fetch("/api/trial/signup", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ email, name, password }),
-		});
-		setBusy(false);
-		if (!res.ok) {
-			setError(await errorOf(res));
-			return;
+		try {
+			const res = await fetch("/api/trial/signup", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ email, name, password }),
+			});
+			if (!res.ok) {
+				setError(await errorOf(res));
+				return;
+			}
+			window.location.assign("/");
+		} catch {
+			setError("Something went wrong.");
+		} finally {
+			setBusy(false);
 		}
-		window.location.assign("/");
 	};
 	return (
 		<main className="flex min-h-dvh items-center justify-center bg-background px-6 text-foreground" data-testid="trial-signup">

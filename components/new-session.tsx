@@ -230,7 +230,7 @@ export function DraftShell({
 	);
 }
 
-export function NewSession({ initialConfigured, mode = "teach" }: { initialConfigured: boolean; mode?: "teach" | "practice" }) {
+export function NewSession({ initialConfigured, mode = "teach", trialParticipant = false }: { initialConfigured: boolean; mode?: "teach" | "practice"; trialParticipant?: boolean }) {
 	const router = useRouter();
 	const t = useT();
 	const [text, setText] = useState("");
@@ -295,12 +295,12 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 		// sidebar. Zero providers opens connection setup; an unavailable
 		// selection with another provider opens the ordinary Strong picker.
 		// The server's admission gate remains the belt.
-		if (zeroKeys) {
+		if (zeroKeys && !trialParticipant) {
 			setSetupOpen(true);
 			return;
 		}
 		const strong = catalog?.slots.strong?.model;
-		if (selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
+		if (!trialParticipant && selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
 			openModelPicker();
 			return; // The learner replaces it explicitly, then sends again.
 		}
@@ -318,7 +318,7 @@ export function NewSession({ initialConfigured, mode = "teach" }: { initialConfi
 				setBusy(false);
 				setStartError(true);
 			});
-	}, [router, configured, zeroKeys, catalog, mode]);
+	}, [router, configured, zeroKeys, catalog, mode, trialParticipant]);
 
 	return (
 		<>

@@ -32,8 +32,8 @@ Secrets and machine-specific paths may be supplied through the process environme
 |---|---|
 | `AI_GATEWAY_API_KEY` | Provisions model calls through the Vercel AI Gateway. Optional on Vercel, where OIDC can authenticate instead. |
 | `DEEPSEEK_API_KEY` | Owner DeepSeek key. Trial calls to DeepSeek send it as gateway BYOK so they spend DeepSeek credits. If it is unset, the gateway uses a DeepSeek credential already saved on the AI Gateway dashboard. |
-| `TRIAL_INVITE_CODE` | The one university-trial invite. Absent means nobody can redeem it. |
-| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not a secret key, and not used to create charges here. The trial does not create a price or a student billing product. |
+| `TRIAL_INVITE_CODE` | The one university-trial invite. Absent means nobody can redeem it. Shorter than 8 characters is refused. |
+| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted secret key (`rk_…`) with Billing meter events write. Keep it server-side and out of commits, logs, and deployment manifests. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. It does not create charges here. The trial does not create a price or a student billing product. |
 | Profile `stripeCustomerId` | Optional `cus_…` on a profile, set by the admin. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
 | `DEEPGRAM_API_KEY` | Optional dictation: short-lived token minting on the server; audio streams directly from the browser to Deepgram. |
@@ -67,7 +67,7 @@ Profiles are **local profiles, not accounts**. A profile's PIN only stops someon
 
 ### University trial
 
-`TRIAL_INVITE_CODE` is one code. Redeeming it creates a member profile, not an admin, and pins the main agent and both support tiers to DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) through the AI Gateway. Those calls send `DEEPSEEK_API_KEY` as request-scoped BYOK when the key is set, so they spend the owner's DeepSeek credits. The same trial includes one GPT-Sol chat on `openai/gpt-6.1-sol`. That session ends when its first reply lands, or when the friend ends it. Until they sign up, further turns, new chats, and note imports are refused. The signup creates one Better Auth user and leaves public email signup disabled. It does not create a Stripe price or a student billing system. GPT-Sol is billed by the gateway; this app does not name a price for it.
+`TRIAL_INVITE_CODE` is one code, at least 8 characters. The owner profile has to exist first. Redeeming the code creates a member profile, not an admin, and pins the main agent and both support tiers to DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) through the AI Gateway. Those calls send `DEEPSEEK_API_KEY` as request-scoped BYOK when the key is set, so they spend the owner's DeepSeek credits. The same trial includes one GPT-Sol chat on `openai/gpt-6.1-sol`. That session ends when its first reply lands, or when the friend ends it. Until they sign up, further turns, new chats, and note imports are refused. The signup creates one Better Auth user and leaves public email signup disabled. It does not create a Stripe price or a student billing system. GPT-Sol is billed by the gateway; this app does not name a price for it.
 
 ## Source map
 

@@ -132,12 +132,15 @@ export function Home({
 		// already created the record). Zero providers opens connection setup;
 		// an unavailable selection with another provider opens its ordinary
 		// picker. The server's admission gate remains the belt.
-		if (zeroKeys) {
+		// The trial spends the owner's gateway credential. A missing local
+		// provider key, including OIDC with no AI_GATEWAY_API_KEY, is not
+		// a reason to open setup. The server still pins the model.
+		if (zeroKeys && !trial?.participant) {
 			setSetupOpen(true);
 			return;
 		}
 		const strong = catalog?.slots.strong?.model;
-		if (selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
+		if (!trial?.participant && selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
 			openModelPicker();
 			return; // Preserve the draft and never create an orphan session.
 		}

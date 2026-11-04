@@ -42,6 +42,7 @@ function sanitize(raw: unknown): TrialRecord {
 		...(text(r.solEndedAt) ? { solEndedAt: text(r.solEndedAt) } : {}),
 		...(text(r.accountId) ? { accountId: text(r.accountId) } : {}),
 		...(text(r.signedUpAt) ? { signedUpAt: text(r.signedUpAt) } : {}),
+		...(text(r.signupPendingAt) ? { signupPendingAt: text(r.signupPendingAt) } : {}),
 	};
 }
 

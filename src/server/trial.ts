@@ -35,6 +35,7 @@ import {
 	readProfiles,
 	writeProfiles,
 } from "../store/users.ts";
+import { subscriptionRequestOrigin } from "./web-subscription-http.ts";
 import { hasUnclaimedData, requestProfile, UsersError } from "./users.ts";
 
 export class TrialError extends Error {
@@ -57,6 +58,8 @@ export interface TrialAccountInput {
 export type TrialAccountCreator = (input: TrialAccountInput) => Promise<{ id: string }>;
 
 const SIGNUP_REQUIRED_MESSAGE = "Sign up to continue. The GPT-Sol session has ended.";
+const MIN_INVITE_CODE_LENGTH = 8;
+const SIGNUP_PENDING_MS = 2 * 60 * 1000;
 
 function configuredCode(): string | undefined {
 	const code = process.env.TRIAL_INVITE_CODE?.trim();
@@ -89,9 +92,29 @@ export function trialStatusForRequest(req: Request | undefined): TrialPublicStat
 
 /** 403 when this trial friend must sign up before another model call. */
 export function trialBlockResponse(): Response | null {
+	const message = trialSignupMessage();
+	if (!message) return null;
+	return Response.json({ error: message, code: TRIAL_SIGNUP_REQUIRED }, { status: 403 });
+}
+
+/** The signup wall text, or null when this caller may keep going. */
+export function trialSignupMessage(): string | null {
 	const status = trialStatusFor(activeUserId() ?? null);
-	if (!status.signupRequired) return null;
-	return Response.json({ error: SIGNUP_REQUIRED_MESSAGE, code: TRIAL_SIGNUP_REQUIRED }, { status: 403 });
+	return status.signupRequired ? SIGNUP_REQUIRED_MESSAGE : null;
+}
+
+/** Browser mutations must be same-origin. Desktop mode is already gated by the proxy. */
+export function trialBrowserAllowed(req: Request): boolean {
+	const desktop = process.env.LH_DESKTOP_SERVER === "1" || Boolean(process.env.LH_DESKTOP_API_SECRET);
+	if (desktop) return true;
+	const origin = req.headers.get("origin");
+	if (!origin || origin === "null") return false;
+	try {
+		return origin === subscriptionRequestOrigin(req)
+			&& (!req.headers.has("sec-fetch-site") || req.headers.get("sec-fetch-site") === "same-origin");
+	} catch {
+		return false;
+	}
 }
 
 /** Conversation pin for the signed-in trial friend, if any. */
@@ -121,13 +144,21 @@ export function redeemTrialCode(
 ): { profileId: string; sessionId: string | null } {
 	const expected = configuredCode();
 	if (!expected) throw new TrialError(404, "This install has no trial code.");
+	if (expected.length < MIN_INVITE_CODE_LENGTH) {
+		throw new TrialError(503, `TRIAL_INVITE_CODE must be at least ${MIN_INVITE_CODE_LENGTH} characters.`);
+	}
 	if (typeof input.code !== "string" || input.code.trim() === "") throw new TrialError(400, "Enter the invite code.");
 	if (!codesMatch(input.code.trim(), expected)) throw new TrialError(403, "That code does not match.");
-	if (readTrialRecord().profileId) throw new TrialError(409, "This trial code is already redeemed.");
+	const profiles = readProfiles();
+	if (readTrialRecord().profileId || profiles.some((profile) => profile.trial)) {
+		throw new TrialError(409, "This trial code is already redeemed.");
+	}
 	if (hasUnclaimedData()) {
 		throw new TrialError(409, "The owner needs to open the app once before this code can be redeemed.");
 	}
-	const profiles = readProfiles();
+	if (profiles.length === 0) {
+		throw new TrialError(409, "Create the owner profile before redeeming this code.");
+	}
 	if (typeof input.name !== "string") throw new TrialError(400, "Enter a name.");
 	const name = normalizeProfileName(input.name);
 	const problem = profileNameProblem(name, profiles);
@@ -205,10 +236,28 @@ function parseSignup(input: { email?: unknown; name?: unknown; password?: unknow
 	return { email: input.email.trim(), name: normalizeProfileName(input.name), password: input.password };
 }
 
-async function createTrialAccount(input: TrialAccountInput): Promise<{ id: string }> {
+async function payloadClient() {
 	const { getPayload } = await import("payload");
 	const { default: config } = await import("../../payload.config.ts");
-	const payload = await getPayload({ config });
+	return getPayload({ config });
+}
+
+/** Same lookup the Discord super-admin seed uses. Only for recovering a create that already landed. */
+async function findAccountIdByEmail(email: string): Promise<string | null> {
+	const payload = await payloadClient();
+	const { docs } = await payload.find({
+		collection: "users",
+		depth: 0,
+		limit: 1,
+		overrideAccess: true,
+		where: { email: { equals: email } },
+	});
+	const id = docs[0]?.id;
+	return typeof id === "string" || typeof id === "number" ? String(id) : null;
+}
+
+async function createTrialAccount(input: TrialAccountInput): Promise<{ id: string }> {
+	const payload = await payloadClient();
 	const betterAuth = (payload as {
 		betterAuth?: {
 			api: {
@@ -251,19 +300,50 @@ export async function signUpFromTrial(
 	if (!record.solEndedAt) throw new TrialError(409, "Finish the GPT-Sol session before signing up.");
 	if (record.signedUpAt) throw new TrialError(409, "This trial already has an account.");
 	const account = parseSignup(input);
+	const pending = readTrialRecord();
+	if (pending.signupPendingAt && !pending.signedUpAt) {
+		const recovered = await findAccountIdByEmail(account.email).catch(() => null);
+		if (recovered) return linkTrialAccount(recovered);
+		const age = Date.now() - Date.parse(pending.signupPendingAt);
+		if (Number.isFinite(age) && age < SIGNUP_PENDING_MS) {
+			throw new TrialError(409, "Signup is already in progress.");
+		}
+	}
+	writeTrialRecord({ ...readTrialRecord(), signupPendingAt: new Date().toISOString() });
 	let created: { id: string };
 	try {
 		created = await accountCreator(account);
 	} catch (err) {
-		if (err instanceof TrialError) throw err;
+		if (err instanceof TrialError) {
+			clearSignupPending();
+			throw err;
+		}
 		const message = err instanceof Error ? err.message : "";
-		if (/already|exists|duplicate/i.test(message)) throw new TrialError(409, "That email is already an account.");
+		if (/already|exists|duplicate/i.test(message)) {
+			const recovered = await findAccountIdByEmail(account.email).catch(() => null);
+			if (recovered) return linkTrialAccount(recovered);
+			clearSignupPending();
+			throw new TrialError(409, "That email is already an account.");
+		}
+		clearSignupPending();
 		throw new TrialError(503, "The account could not be created.");
 	}
+	return linkTrialAccount(created.id);
+}
+
+function linkTrialAccount(accountId: string): { accountId: string } {
 	const latest = readTrialRecord();
-	if (latest.signedUpAt) return { accountId: latest.accountId ?? created.id };
-	writeTrialRecord({ ...latest, accountId: created.id, signedUpAt: new Date().toISOString() });
-	return { accountId: created.id };
+	if (latest.signedUpAt) return { accountId: latest.accountId ?? accountId };
+	const { signupPendingAt: _pending, ...rest } = latest;
+	writeTrialRecord({ ...rest, accountId, signedUpAt: new Date().toISOString() });
+	return { accountId };
+}
+
+function clearSignupPending(): void {
+	const latest = readTrialRecord();
+	if (!latest.signupPendingAt || latest.signedUpAt) return;
+	const { signupPendingAt: _pending, ...rest } = latest;
+	writeTrialRecord(rest);
 }
 
 export function trialErrorResponse(err: unknown): Response {

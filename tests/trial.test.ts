@@ -18,6 +18,7 @@ const config = await import("../config.ts");
 const trial = await import("../src/server/trial.ts");
 const users = await import("../src/server/users.ts");
 const { readSettings, writeSettings } = await import("../src/store/settings.ts");
+const { mintUserId, writeProfiles } = await import("../src/store/users.ts");
 const { TRIAL_DEEPSEEK_MODEL, TRIAL_SOL_MODEL } = await import("../src/core/trial.ts");
 const { deepseekByokOptions } = await import("../src/agent/gateway-provision.ts");
 
@@ -68,6 +69,8 @@ describe("university trial", () => {
 		fs.writeFileSync(path.join(ROOT, "chats", "keep.json"), "{}");
 		refusal(() => trial.redeemTrialCode(undefined, { code: "friend-code", name: "Friend", color: "teal" }), 409);
 		fs.rmSync(path.join(ROOT, "chats"), { recursive: true });
+		refusal(() => trial.redeemTrialCode(undefined, { code: "friend-code", name: "Friend", color: "teal" }), 409);
+		writeProfiles([{ id: mintUserId(), name: "Owner", color: "sky", role: "admin", createdAt: "2026-11-03T00:00:00.000Z" }]);
 
 		refusal(() => trial.redeemTrialCode(undefined, { code: "nope", name: "Friend", color: "teal" }), 403);
 		const { profileId, sessionId } = trial.redeemTrialCode(undefined, { code: "friend-code", name: "  Ada  ", color: "teal" });
@@ -78,6 +81,9 @@ describe("university trial", () => {
 		assert.equal(profile?.trial, true);
 		assert.equal(profile?.name, "Ada");
 		refusal(() => trial.redeemTrialCode(undefined, { code: "friend-code", name: "Eve", color: "sky" }), 409);
+		fs.rmSync(config.INSTALL.trial);
+		refusal(() => trial.redeemTrialCode(undefined, { code: "friend-code", name: "Eve", color: "sky" }), 409);
+		fs.writeFileSync(config.INSTALL.trial, `${JSON.stringify({ version: 1, profileId, redeemedAt: "2026-11-03T00:00:00.000Z" })}\n`);
 		assert.equal(trial.trialStatusFor(null).open, false);
 		const stored = fs.readFileSync(config.INSTALL.trial, "utf8");
 		assert.doesNotMatch(stored, /friend-code/);

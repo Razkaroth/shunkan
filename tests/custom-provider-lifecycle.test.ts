@@ -78,13 +78,13 @@ test("unset preference reselects the existing default against current reasoning 
 	assert.equal(requests[0]!.body.reasoning_effort, "medium");
 	configure(); await run(engine); assert.equal(requests[1]!.body.reasoning_effort, undefined);
 });
-test("catalog capabilities remain reported and prices unknown despite runtime image permission", () => {
+test("custom models stay off the gateway catalog", () => {
 	const engine = providerEngineForSpec({ provider: "custom", id: "m" });
 	assert.deepEqual(engine.model.input, ["text", "image"]);
-	const dto = modelCatalog().models.find((m) => m.provider === "custom")!;
-	assert.deepEqual(dto.input, ["text"]); assert.equal(dto.cost, null);
+	assert.equal(modelCatalog().models.find((m) => m.provider === "custom"), undefined);
+	assert.equal(modelCatalog().providers.find((p) => p.id === "custom"), undefined);
 	assert.equal(callCost({ inputTokens: 100, outputTokens: 100 }, "custom:m"), null);
-	assert.equal(catalogContextLimits().get("custom:m"), 16384);
+	assert.equal(catalogContextLimits().get("custom:m"), undefined);
 });
 const image = { type: "image" as const, data: createCanvas(1, 1).toBuffer("image/png").toString("base64"), mimeType: "image/png" };
 test("actual native encoder preserves USER and tool-result images under missing metadata, including after reload", async () => {
