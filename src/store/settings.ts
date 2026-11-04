@@ -24,6 +24,7 @@ import {
 	sanitizeUserSettings,
 	type UserSettings,
 } from "../core/settings.ts";
+import { applyTrialModelPins } from "./trial.ts";
 import type { SettingsStore } from "../core/ports.ts";
 
 /** The persisted record, or null when none exists (first boot). Runs the
@@ -33,20 +34,20 @@ export function readSettings(): UserSettings | null {
 	try {
 		raw = fs.readFileSync(settingsFile(), "utf-8");
 	} catch {
-		return null; // no settings.json yet — first boot, all factory defaults
+		return applyTrialModelPins(null); // no settings.json yet — first boot, all factory defaults
 	}
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(raw);
 	} catch {
-		return null; // corrupt → first-boot semantics (all factory defaults)
+		return applyTrialModelPins(null); // corrupt → first-boot semantics (all factory defaults)
 	}
 	const record = sanitizeUserSettings(parsed);
-	if (!record) return null;
+	if (!record) return applyTrialModelPins(null);
 	// Version chain (empty today): a future v2 migration slots in here —
 	// `if (record.version > CURRENT_SETTINGS_VERSION) …`. Unknown NEWER
 	// versions pass through untouched (the sanitizer preserved unknowns).
-	return record;
+	return applyTrialModelPins(record);
 }
 
 /** Persist the record (sanitized). Returns what was written. */

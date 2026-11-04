@@ -20,8 +20,9 @@ import { useLanguage, useSetLanguage, useT, type Translate } from "@/components/
 import { ThinSelect } from "@/components/settings/controls";
 import { ProfileAvatar } from "./profile-avatar";
 import { ProfileForm, type ProfileFormValues } from "./profile-form";
+import { TrialRedeem } from "./trial-flow";
 
-type Mode = { kind: "pick" } | { kind: "pin"; profile: PublicProfile } | { kind: "create" };
+type Mode = { kind: "pick" } | { kind: "pin"; profile: PublicProfile } | { kind: "create" } | { kind: "trial" };
 
 async function errorOf(res: Response, t: Translate): Promise<string> {
 	const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -32,7 +33,7 @@ function enterApp() {
 	window.location.assign("/");
 }
 
-export function UserSelect({ snapshot }: { snapshot: UsersSnapshot }) {
+export function UserSelect({ snapshot, trialOpen = false }: { snapshot: UsersSnapshot; trialOpen?: boolean }) {
 	const t = useT();
 	const language = useLanguage();
 	const claiming = snapshot.profiles.length === 0;
@@ -119,6 +120,11 @@ export function UserSelect({ snapshot }: { snapshot: UsersSnapshot }) {
 							</li>
 						)}
 					</ul>
+					{trialOpen && (
+						<button type="button" className="text-sm text-muted-foreground underline" data-testid="trial-have-code" onClick={() => setMode({ kind: "trial" })}>
+							{t("users.trial.haveCode")}
+						</button>
+					)}
 				</>
 			)}
 
@@ -142,7 +148,16 @@ export function UserSelect({ snapshot }: { snapshot: UsersSnapshot }) {
 						onSubmit={create}
 						onCancel={claiming ? undefined : () => setMode({ kind: "pick" })}
 					/>
+					{trialOpen && (
+						<button type="button" className="text-sm text-muted-foreground underline" data-testid="trial-have-code" onClick={() => setMode({ kind: "trial" })}>
+							{t("users.trial.haveCode")}
+						</button>
+					)}
 				</div>
+			)}
+
+			{mode.kind === "trial" && (
+				<TrialRedeem language={language} onCancel={claiming ? () => setMode({ kind: "create" }) : () => setMode({ kind: "pick" })} />
 			)}
 
 			<LanguagePicker />

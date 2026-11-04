@@ -47,7 +47,10 @@ describe("AI Gateway provisioning", { concurrency: false }, () => {
 		assert.equal(gatewayModelId({ provider: "openrouter", id: "openai/gpt-4o-mini" }), "openai/gpt-4o-mini");
 		assert.throws(() => gatewayModelId({ provider: "custom", id: "local-llama" }), /Custom endpoints are not used/);
 		assert.throws(() => gatewayModelId({ provider: "custom", id: "openai/gpt-4o-mini" }), /Custom endpoints are not used/);
-		assert.throws(() => gatewayModelId({ provider: "opencode-go", id: "glm-5.3" }), /no creator/);
+		assert.throws(() => gatewayModelId({ provider: "custom", id: "local/llama" }), /Custom endpoints are not used/);
+		assert.throws(() => gatewayModelId({ provider: "opencode-go", id: "glm-5.3" }), /not on the AI Gateway/);
+		assert.throws(() => gatewayModelId({ provider: "opencode-go", id: "gpt-6-luna" }), /not on the AI Gateway/);
+		assert.throws(() => gatewayModelId({ provider: "not-a-creator", id: "some-model" }), /no creator/);
 	});
 
 	test("the engine streams through AI Gateway and sends Stripe meter headers for the active profile", async () => {

@@ -33,6 +33,7 @@ export const INSTALL = {
 	users: path.join(DATA_ROOT, "users.json"),
 	host: path.join(DATA_ROOT, "host.json"),
 	sessions: path.join(DATA_ROOT, "sessions.json"),
+	trial: path.join(DATA_ROOT, "trial.json"),
 	userDirs: path.join(DATA_ROOT, "users"),
 } as const;
 

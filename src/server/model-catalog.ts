@@ -20,7 +20,6 @@
 import { clampThinkingLevel, getSupportedThinkingLevels, type Api, type Model } from "@earendil-works/pi-ai";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { piModels } from "../agent/models.ts";
-import { customProviderAvailable } from "./custom-provider.ts";
 import { chatGPTConnected, chatGPTModel, chatGPTModels, refreshChatGPTModels } from "../agent/chatgpt-bridge.ts";
 import { NATIVE_SUBSCRIPTIONS } from "../core/contracts/subscriptions.ts";
 import { nativeSubscriptionId, nativeSubscriptionConnected, nativeSubscriptionModel, nativeSubscriptionModels, refreshSubscriptionModels } from "../agent/subscription-bridge.ts";
@@ -55,7 +54,6 @@ import { CLAUDE_CODE_PROVIDER } from "../agent/claude-code/constants.ts";
 import {
 	BACKGROUND_MODEL_ROLES,
 	MODEL_SLOTS,
-	customProviderUsable,
 	type BackgroundModelRole,
 	type ModelSlotName,
 	type ModelsSettings,
@@ -146,9 +144,13 @@ export function catalogSlots(): SlotPins {
  *  plain-key model provider (core/auth-keys.ts's pi-ai-derived table),
  *  with keyPresent read env-wins through the keys seam, fresh per call —
  *  saving a key immediately federates the provider into the picker. */
+const NOT_ON_GATEWAY = new Set(["opencode", "opencode-go"]);
+
 export function catalogProviders(): CatalogProvider[] {
 	piModels();
-	return AUTH_PROVIDER_KEYS.map((p) => ({
+	// OpenCode and the custom endpoint are not gateway providers. Listing
+	// them lets a slot be saved that gatewayModelId then refuses.
+	return AUTH_PROVIDER_KEYS.filter((p) => !NOT_ON_GATEWAY.has(p.id)).map((p) => ({
 		id: p.id,
 		envVar: p.envVar,
 		keyPresent: p.id === "vercel-ai-gateway" ? gatewayKeyPresent() : keyValue(p.envVar) !== undefined,
@@ -156,11 +158,6 @@ export function catalogProviders(): CatalogProvider[] {
 		{ id: "chatgpt", envVar: "", keyPresent: chatGPTConnected() },
 		{ id: CLAUDE_CODE_PROVIDER, envVar: "", keyPresent: claudeCodeAvailable() },
 		...NATIVE_SUBSCRIPTIONS.map((p) => ({ id: p.logicalId, envVar: "", keyPresent: nativeSubscriptionConnected(p.providerId) })),
-		// The custom endpoint: a row only when usable (base URL set). keyPresent
-		// reflects usability, not key presence (keyless local servers are allowed).
-		...(customProviderUsable(effectiveSettings().customProvider)
-			? [{ id: CUSTOM_PROVIDER.id, envVar: CUSTOM_PROVIDER.envVar, keyPresent: customProviderAvailable() }]
-			: []),
 	]).sort((a, b) => a.id.localeCompare(b.id));
 }
 

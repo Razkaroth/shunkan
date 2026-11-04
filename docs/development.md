@@ -31,7 +31,9 @@ Secrets and machine-specific paths may be supplied through the process environme
 | Configuration | Purpose |
 |---|---|
 | `AI_GATEWAY_API_KEY` | Provisions model calls through the Vercel AI Gateway. Optional on Vercel, where OIDC can authenticate instead. |
-| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges here. |
+| `DEEPSEEK_API_KEY` | Owner DeepSeek key. Trial calls to DeepSeek send it as gateway BYOK so they spend DeepSeek credits. If it is unset, the gateway uses a DeepSeek credential already saved on the AI Gateway dashboard. |
+| `TRIAL_INVITE_CODE` | The one university-trial invite. Absent means nobody can redeem it. Shorter than 8 characters is refused. |
+| `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges here. The trial does not create a price or a student billing product. |
 | Profile `stripeCustomerId` | Optional `cus_…` on a profile, set by the admin. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
 | `DEEPGRAM_API_KEY` | Optional dictation: short-lived token minting on the server; audio streams directly from the browser to Deepgram. |
@@ -59,9 +61,13 @@ This is a **trusted local/shared developer-server mode**, not multi-user hosting
 
 ### Profiles
 
-Opening the app shows a profile select screen. Each profile keeps its own learner records under `<data dir>/users/<id>/` (chats, graph, jobs, `settings.json`, prompt overrides, debug logs). Install-wide files stay at the data-dir root: `users.json` (the profiles), `host.json` (restricted sign-ups), `sessions.json` (which browser has which profile open), and the model cache. API keys and subscription credentials are household-wide: every profile uses the same ones. The first profile created is the only admin; on an install that already has records, it claims them (they move into its folder). Without `users.json` the install is unclaimed and learner paths resolve to the data-dir root, which is what tests and the pre-profiles layout rely on.
+Opening the app shows a profile select screen. Each profile keeps its own learner records under `<data dir>/users/<id>/` (chats, graph, jobs, `settings.json`, prompt overrides, debug logs). Install-wide files stay at the data-dir root: `users.json` (the profiles), `host.json` (restricted sign-ups), `sessions.json` (which browser has which profile open), `trial.json` (the university-trial redemption), and the model cache. API keys and subscription credentials are household-wide: every profile uses the same ones. The first profile created is the only admin; on an install that already has records, it claims them (they move into its folder). Without `users.json` the install is unclaimed and learner paths resolve to the data-dir root, which is what tests and the pre-profiles layout rely on.
 
 Profiles are **local profiles, not accounts**. A profile's PIN only stops someone opening it through the app; it is stored in plain text and nothing is encrypted, so anyone with access to the data directory can read every profile. The network gate above still applies: profiles do not make it safe to expose the server to untrusted users.
+
+### University trial
+
+`TRIAL_INVITE_CODE` is one code, at least 8 characters. The owner profile has to exist first. Redeeming the code creates a member profile, not an admin, and pins the main agent and both support tiers to DeepSeek V4.1 Flash (`deepseek/deepseek-v4.1-flash`) through the AI Gateway. Those calls send `DEEPSEEK_API_KEY` as request-scoped BYOK when the key is set, so they spend the owner's DeepSeek credits. The same trial includes one GPT-Sol chat on `openai/gpt-6.1-sol`. That session ends when its first reply lands, or when the friend ends it. Until they sign up, further turns, new chats, and note imports are refused. The signup creates one Better Auth user and leaves public email signup disabled. It does not create a Stripe price or a student billing system. GPT-Sol is billed by the gateway; this app does not name a price for it.
 
 ## Source map
 

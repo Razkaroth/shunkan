@@ -751,6 +751,13 @@ export function extractionStatuses(): RunningExtraction[] {
  *  cancels the request, spend stops — and the run ends like a failure:
  *  nothing merged, nothing checkpointed, partial usage still persisted.
  *  Returns false when no run is in flight (idempotent no-op). */
+/** Stop in-flight notes imports for the caller. Chat extractions stay running. */
+export function abortOwnNotesExtractions(): void {
+	for (const run of runs().running.values()) {
+		if (run.kind === "notes" && ownRun(run)) run.controller.abort();
+	}
+}
+
 export function abortExtraction(chatId: string): boolean {
 	// PER-CHUNK JOBS (owner, 2026-09-28): a source may own several registry
 	// entries (one per chunk/batch) — aborting the source aborts EVERY

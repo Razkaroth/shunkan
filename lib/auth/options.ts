@@ -69,8 +69,11 @@ const betterAuthOptions = {
 
 /**
  * Payload Better Auth options. Roles match Foundry: user, admin, super-admin.
- * Email signup is disabled, and Discord cannot create accounts. The invite
- * middleware is left off: with Better Auth 1.7 it short-circuits every API call.
+ * Email signup stays disabled on the public auth API, and Discord cannot
+ * create accounts. The university trial creates one account from
+ * src/server/trial.ts after its GPT-Sol session ends. That path does not
+ * enable public signup and does not bill anyone. The invite middleware is
+ * left off: with Better Auth 1.7 it short-circuits every API call.
  */
 export const payloadAuthOptions = {
 	users: {

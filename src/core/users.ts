@@ -36,6 +36,8 @@ export interface Profile {
 	pin?: string;
 	/** Stripe customer (`cus_…`) billed for this profile's gateway token usage. Absent means the request is not metered. */
 	stripeCustomerId?: string;
+	/** The one university-trial friend. Absent on every other profile. */
+	trial?: boolean;
 	createdAt: string;
 }
 
@@ -46,6 +48,7 @@ export interface PublicProfile {
 	color: ProfileColor;
 	role: ProfileRole;
 	hasPin: boolean;
+	trial?: boolean;
 	/** The profile's app language, from its own settings record. Set by
 	 *  the server's snapshot; the pure projection can't read settings. */
 	language?: AppLanguage;
@@ -78,7 +81,14 @@ export function isProfileColor(value: unknown): value is ProfileColor {
 }
 
 export function publicProfile(profile: Profile): PublicProfile {
-	return { id: profile.id, name: profile.name, color: profile.color, role: profile.role, hasPin: !!profile.pin };
+	return {
+		id: profile.id,
+		name: profile.name,
+		color: profile.color,
+		role: profile.role,
+		hasPin: !!profile.pin,
+		...(profile.trial ? { trial: true } : {}),
+	};
 }
 
 /** Trimmed, inner whitespace collapsed. */

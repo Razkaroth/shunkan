@@ -1,5 +1,5 @@
 import { Home } from "@/components/home";
-import { readSettingsRecord, runAsUser } from "@/src/server";
+import { readSettingsRecord, runAsUser, trialStatusFor } from "@/src/server";
 import { resolveSettings, slotsConfigured } from "@/src/core";
 import { requirePageUser } from "../_lib/user";
 
@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
 	const userId = await requirePageUser();
+	const trial = trialStatusFor(userId);
 	return runAsUser(userId, () => {
 		// First-run gate (model-slots wave): chats cannot start until the user
 		// has picked all three slots — the dock shows the CTA while the raw
@@ -19,6 +20,6 @@ export default async function HomePage() {
 		// the chains view. Resolved through the one core resolver (missing
 		// section / absent key → factory default on); re-read per navigation.
 		const rendering = resolveSettings(record ?? null).graph.rendering;
-		return <Home initialConfigured={slotsConfigured(record?.models)} rendering={rendering} />;
+		return <Home initialConfigured={slotsConfigured(record?.models)} rendering={rendering} trial={trial.participant ? trial : null} />;
 	});
 }

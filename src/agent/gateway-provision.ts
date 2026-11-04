@@ -67,11 +67,42 @@ export function gatewayCustomerId(): string | undefined {
 	}
 }
 
+/**
+ * DeepSeek calls spend the owner's DeepSeek API credits when
+ * `DEEPSEEK_API_KEY` is set: the key rides the gateway request as BYOK.
+ * Other models, including the one GPT-Sol session, do not use that key.
+ * With no key, the gateway keeps whatever DeepSeek credential it already
+ * has cached. This does not set a price.
+ */
+export function deepseekByokOptions(
+	modelId: string,
+	env: NodeJS.ProcessEnv | { DEEPSEEK_API_KEY?: string } = process.env,
+): { gateway: { byok: { deepseek: Array<{ apiKey: string }> } } } | undefined {
+	if (!modelId.startsWith("deepseek/")) return undefined;
+	const apiKey = env.DEEPSEEK_API_KEY?.trim();
+	if (!apiKey) return undefined;
+	return { gateway: { byok: { deepseek: [{ apiKey }] } } };
+}
+
+/** Providers that must not be sent to the gateway. */
+export function gatewayRefusedProvider(provider: string): string | undefined {
+	if (provider === "custom") return "Custom endpoints are not used for model calls. Select an AI Gateway model.";
+	if (provider === "opencode" || provider === "opencode-go") return "OpenCode models are not on the AI Gateway. Select a gateway model.";
+	return undefined;
+}
+
+/** Production calls authenticate at the gateway. The provider's own key is not that credential. */
+export function gatewayAuthenticates(provider: string): boolean {
+	return gatewayRefusedProvider(provider) === undefined;
+}
+
 /** Gateway model ids are `creator/model` strings from the live catalog. */
 export function gatewayModelId(model: { provider: string; id: string; api?: string }): string {
 	if (model.provider === "custom") {
 		throw new Error("Custom endpoints are not used for model calls. Select an AI Gateway model.");
 	}
+	const refused = gatewayRefusedProvider(model.provider);
+	if (refused) throw new Error(refused);
 	if (model.provider === "vercel-ai-gateway" || model.id.includes("/")) return model.id;
 	const creator = model.provider === "github-copilot" || model.provider === "github-copilot-subscription"
 		? (model.api?.startsWith("anthropic") ? "anthropic" : model.api?.includes("google") ? "google" : "openai")
@@ -165,6 +196,7 @@ function toMessages(context: TranscriptContext): ModelMessage[] {
 			if (typeof content !== "string" && content.length > 0) messages.push({ role: "assistant", content });
 			continue;
 		}
+		if (message.role !== "toolResult") continue;
 		const text = message.content.map((part) => part.type === "text" ? part.text : "").join("");
 		const images = message.content.flatMap((part) => part.type === "image"
 			? [{ type: "file" as const, data: { type: "data" as const, data: part.data }, mediaType: part.mimeType }]
@@ -274,6 +306,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 		};
 		try {
 			const modelId = gatewayModelId(model);
+			const providerOptions = deepseekByokOptions(modelId);
 			const customerId = gatewayCustomerId();
 			const restrictedKey = process.env.STRIPE_RESTRICTED_ACCESS_KEY?.trim();
 			const headers: Record<string, string> = {};
@@ -296,6 +329,7 @@ export function gatewayStream(model: Model<Api>, context: TranscriptContext, opt
 			const reasoning = !model.reasoning && requested === "none" ? undefined : requested;
 			const result = streamText({
 				model: gateway(modelId),
+				...(providerOptions ? { providerOptions } : {}),
 				...(instructions ? { instructions } : {}),
 				...(messages.length > 0 ? { messages } : { prompt: "" }),
 				...(tools ? { tools } : {}),

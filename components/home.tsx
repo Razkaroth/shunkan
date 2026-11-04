@@ -16,7 +16,8 @@ import { enterKey } from "@/components/phone-layout";
 import { usePhoneLayout } from "@/components/phone-layout-context";
 import { PathInput } from "@/components/path-input";
 import { SessionStarter } from "@/components/start-session";
-import type { TurnUsage } from "@/src/core";
+import { TrialHomeOffer } from "@/components/trial-flow";
+import type { TrialPublicStatus, TurnUsage } from "@/src/core";
 import { useT } from "@/components/i18n";
 
 /**
@@ -28,12 +29,14 @@ import { useT } from "@/components/i18n";
 export function Home({
 	initialConfigured,
 	rendering = true,
+	trial = null,
 }: {
 	initialConfigured: boolean;
 	/** GRAPH RENDERING off (owner, 2026-10-06): the home's main view is
 	 * the chains view, not the canvas. Read server-side per navigation —
 	 * changing the setting applies on the next visit home. */
 	rendering?: boolean;
+	trial?: TrialPublicStatus | null;
 }) {
 	const router = useRouter();
 	const t = useT();
@@ -129,12 +132,15 @@ export function Home({
 		// already created the record). Zero providers opens connection setup;
 		// an unavailable selection with another provider opens its ordinary
 		// picker. The server's admission gate remains the belt.
-		if (zeroKeys) {
+		// The trial spends the owner's gateway credential. A missing local
+		// provider key, including OIDC with no AI_GATEWAY_API_KEY, is not
+		// a reason to open setup. The server still pins the model.
+		if (zeroKeys && !trial?.participant) {
 			setSetupOpen(true);
 			return;
 		}
 		const strong = catalog?.slots.strong?.model;
-		if (selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
+		if (!trial?.participant && selectedModelUnavailable(catalog, strong ? `${strong.provider}:${strong.id}` : undefined)) {
 			openModelPicker();
 			return; // Preserve the draft and never create an orphan session.
 		}
@@ -207,6 +213,11 @@ export function Home({
 				<div className="pointer-events-auto">
 					<SidebarToggle />
 				</div>
+				{trial?.participant && (
+					<div className="pointer-events-auto ml-2">
+						<TrialHomeOffer status={trial} />
+					</div>
+				)}
 			</header>
 
 			{/* New session — same floating blob as the chat composer, docked
