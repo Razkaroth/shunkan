@@ -925,6 +925,7 @@ export function GraphChromeRow({
 					<Hint label={t("graph.chrome.chainsHint")} side="bottom">
 						<button
 							type="button"
+							id="tour-chains"
 							onClick={onOpenChains}
 							data-testid="open-chain-table"
 							className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"

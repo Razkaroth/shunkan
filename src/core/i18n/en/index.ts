@@ -11,9 +11,10 @@ import { composer } from "./composer.ts";
 import { graph } from "./graph.ts";
 import { nav } from "./nav.ts";
 import { settings } from "./settings.ts";
+import { tour } from "./tour.ts";
 import { users } from "./users.ts";
 
-export const en = { ...common, ...settings, ...nav, ...chat, ...composer, ...artifacts, ...graph, ...users };
+export const en = { ...common, ...settings, ...nav, ...chat, ...composer, ...artifacts, ...graph, ...users, ...tour };
 
 export type TranslationKey = keyof typeof en;
 export type Dictionary = Record<TranslationKey, string>;

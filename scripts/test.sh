@@ -21,4 +21,7 @@ export LH_DATA_DIR="$DATA_DIR"
 export NODE_ENV=test
 
 cd "$ROOT"
-tsx --test tests/*.test.ts tests/*.test.tsx "$@"
+# product-tour-mount.test.tsx mocks next/navigation and nextstepjs. That API
+# is still behind Node's experimental test-module-mocks flag, which NODE_OPTIONS
+# refuses, so the suite invokes node with the flag instead of the tsx wrapper.
+node --experimental-test-module-mocks --disable-warning=ExperimentalWarning --import tsx --test tests/*.test.ts tests/*.test.tsx "$@"

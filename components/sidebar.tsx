@@ -762,7 +762,7 @@ function SessionsSidebar() {
 				    half/half row): full-width rows read cleaner and give the
 				    labels room; teaching keeps the original draft route,
 				    practice carries its mode. */}
-				<div className="mx-3 mb-2 flex flex-col gap-1.5">
+				<div id="tour-new-sessions" className="mx-3 mb-2 flex flex-col gap-1.5">
 					<button
 						type="button"
 						data-testid="new-session"
@@ -872,7 +872,7 @@ function SessionsSidebar() {
 					))}
 				</div>
 
-				<div ref={listRef} className="flex-1 overflow-y-auto p-2">
+				<div id="tour-session-list" ref={listRef} className="flex-1 overflow-y-auto p-2">
 					{shown === null ? (
 						<div className="px-2 py-4 text-xs text-muted-foreground">{t("nav.sidebar.loading")}</div>
 					) : shown.length === 0 ? (
@@ -935,6 +935,7 @@ function SessionsSidebar() {
 						<Hint label={t("nav.sidebar.settings")} action="open-settings" side="right">
 							<button
 								type="button"
+								id="tour-settings"
 								onClick={() => {
 									close();
 									openSettings();

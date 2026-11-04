@@ -694,3 +694,9 @@ body {
 		font-size: 16px;
 	}
 }
+
+/* NextStep's default card is white and does not set a text color. Body copy
+   is light on this dark app, so the card text stays dark enough to read. */
+[data-name="nextstep-card"] {
+	color: #111827;
+}
