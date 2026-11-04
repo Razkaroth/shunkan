@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { normalizeContext } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { piEngineForSpec, piModels } from "../src/agent/models.ts";
+import { providerEngineForSpec, piModels } from "../src/agent/models.ts";
 import { modelCatalog, validateChatSettings, validateModelsSettings } from "../src/server/model-catalog.ts";
 import { callCost } from "../src/server/pricing.ts";
 
@@ -30,7 +30,7 @@ describe("native 1.4 OpenRouter free catalog (offline, no live discovery)", { co
 				assert.deepEqual(validateModelsSettings({ strong: { model }, cheap: { model } }), { ok: true });
 				assert.equal(validateModelsSettings({ vision: { model } }).ok, true, "server catalog validation stays provider/model based; vision filtering belongs to the picker");
 				assert.equal(catalog.models.filter((m) => m.input.includes("image")).some((m) => m.provider === "openrouter" && m.id === id), input.includes("image"));
-				const engine = piEngineForSpec(model);
+				const engine = providerEngineForSpec(model);
 				assert.equal(engine.model, piModels().getModel("openrouter", id));
 				assert.equal(engine.model.api, "openai-completions");
 				assert.deepEqual(engine.model.input, input);
@@ -53,6 +53,6 @@ describe("native 1.4 OpenRouter free catalog (offline, no live discovery)", { co
 	}
 	it("removed/unknown native models remain unpriced and unresolvable, never aliased to a paid fallback", () => {
 		assert.equal(callCost({ inputTokens: 1, outputTokens: 1 }, "openrouter:removed/no-such-model"), null);
-		assert.throws(() => piEngineForSpec({ provider: "openrouter", id: "removed/no-such-model" }), /catalog has no model/);
+		assert.throws(() => providerEngineForSpec({ provider: "openrouter", id: "removed/no-such-model" }), /catalog has no model/);
 	});
 });

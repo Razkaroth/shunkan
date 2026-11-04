@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
 	const { id } = await params;
-	const body = (await req.json().catch(() => ({}))) as { name?: unknown; color?: unknown; pin?: unknown; language?: unknown };
+	const body = (await req.json().catch(() => ({}))) as { name?: unknown; color?: unknown; pin?: unknown; language?: unknown; stripeCustomerId?: unknown };
 	try {
 		return Response.json({ profile: updateProfile(req, id, body) });
 	} catch (err) {

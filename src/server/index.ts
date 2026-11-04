@@ -3,6 +3,7 @@
  * that app/ may import. Route handlers and server components come through
  * here; nothing under app/ touches src/store or src/agent directly.
  */
+import "./gateway-customer.ts";
 
 export * from "./chat-handler.ts";
 export * from "./events-stream.ts";
