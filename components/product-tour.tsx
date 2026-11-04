@@ -3,7 +3,7 @@
 /**
  * First-run product tour. NextStep.js owns the overlay, card, and routing
  * adapter (App Router). This wrapper starts `firstRun` once, on the home
- * screen, and remembers a finish or skip in localStorage.
+ * screen, and remembers a finish or skip for that profile.
  *
  * The default card is white and does not set a text color. The app's body
  * color is light, so app/globals.css pins the card text dark enough to read.
@@ -15,23 +15,23 @@ import type { Tour } from "nextstepjs";
 import { useT } from "@/components/i18n";
 import {
 	FIRST_RUN_TOUR,
-	FIRST_RUN_TOUR_SEEN_KEY,
 	buildFirstRunTour,
 	shouldStartFirstRun,
+	tourSeenStorageKey,
 	visibleFirstRunSteps,
 } from "@/components/product-tour-steps";
 
-function markTourSeen(): void {
+function markTourSeen(profileId: string): void {
 	try {
-		localStorage.setItem(FIRST_RUN_TOUR_SEEN_KEY, "1");
+		localStorage.setItem(tourSeenStorageKey(profileId), "1");
 	} catch {
 		// Private mode can reject storage. The tour may show again next visit.
 	}
 }
 
-function tourAlreadySeen(): boolean {
+function tourAlreadySeen(profileId: string): boolean {
 	try {
-		return localStorage.getItem(FIRST_RUN_TOUR_SEEN_KEY) === "1";
+		return localStorage.getItem(tourSeenStorageKey(profileId)) === "1";
 	} catch {
 		return true;
 	}
@@ -53,18 +53,36 @@ function isTourTargetVisible(selector: string): boolean {
 	return visibleW > 8 && visibleH > 8;
 }
 
-function FirstRunStarter({ tours, onReady }: { tours: Tour[]; onReady: (tours: Tour[]) => void }) {
+function selectorsOf(steps: { selector?: string }[]): Set<string> {
+	const selectors = new Set<string>();
+	for (const step of steps) {
+		if (step.selector) selectors.add(step.selector);
+	}
+	return selectors;
+}
+
+function FirstRunStarter({
+	tours,
+	profileId,
+	onReady,
+}: {
+	tours: Tour[];
+	profileId: string;
+	onReady: (selectors: ReadonlySet<string>) => void;
+}) {
 	const pathname = usePathname();
-	const decided = useRef(false);
+	const toursRef = useRef(tours);
+	toursRef.current = tours;
 
 	useEffect(() => {
-		if (pathname !== "/" || decided.current) return;
+		if (pathname !== "/") return;
 		let cancelled = false;
+		let decided = false;
 		let timer = 0;
 		const attempt = (triesLeft: number) => {
-			if (cancelled || decided.current) return;
-			if (tourAlreadySeen()) return;
-			const tour = tours[0];
+			if (cancelled || decided) return;
+			if (tourAlreadySeen(profileId)) return;
+			const tour = toursRef.current[0];
 			if (!tour || !document.getElementById("tour-composer")) {
 				if (triesLeft > 0) timer = window.setTimeout(() => attempt(triesLeft - 1), 100);
 				return;
@@ -74,8 +92,8 @@ function FirstRunStarter({ tours, onReady }: { tours: Tour[]; onReady: (tours: T
 				if (triesLeft > 0) timer = window.setTimeout(() => attempt(triesLeft - 1), 100);
 				return;
 			}
-			decided.current = true;
-			onReady([{ tour: tour.tour, steps }]);
+			decided = true;
+			onReady(selectorsOf(steps));
 		};
 		// The sidebar opens in an effect and may still be animating open.
 		timer = window.setTimeout(() => attempt(8), 300);
@@ -83,21 +101,33 @@ function FirstRunStarter({ tours, onReady }: { tours: Tour[]; onReady: (tours: T
 			cancelled = true;
 			window.clearTimeout(timer);
 		};
-	}, [onReady, pathname, tours]);
+	}, [onReady, pathname, profileId]);
 
 	return null;
 }
 
-function TourShell({ children, tours }: { children: React.ReactNode; tours: Tour[] }) {
+/** Cards follow the current translations. State only remembers which targets were on screen. */
+function displayedTours(tours: Tour[], included: ReadonlySet<string> | null): Tour[] {
+	if (!included) return tours;
+	return tours.map((tour) => ({
+		...tour,
+		steps: tour.steps.filter((step) => step.selector === undefined || included.has(step.selector)),
+	}));
+}
+
+function TourShell({ children, tours, profileId }: { children: React.ReactNode; tours: Tour[]; profileId: string }) {
 	const { startNextStep } = useNextStep();
-	const [steps, setSteps] = useState(tours);
+	const [included, setIncluded] = useState<ReadonlySet<string> | null>(null);
 	const [armed, setArmed] = useState(false);
 	const started = useRef(false);
+	const steps = useMemo(() => displayedTours(tours, included), [tours, included]);
 
-	const onReady = useCallback((next: Tour[]) => {
-		setSteps(next);
+	const onReady = useCallback((selectors: ReadonlySet<string>) => {
+		setIncluded(selectors);
 		setArmed(true);
 	}, []);
+
+	const remember = useCallback(() => markTourSeen(profileId), [profileId]);
 
 	useEffect(() => {
 		if (!armed || started.current) return;
@@ -112,21 +142,21 @@ function TourShell({ children, tours }: { children: React.ReactNode; tours: Tour
 			shadowOpacity="0.72"
 			scrollToTop={false}
 			disableConsoleLogs
-			onComplete={markTourSeen}
-			onSkip={markTourSeen}
+			onComplete={remember}
+			onSkip={remember}
 		>
 			{children}
-			<FirstRunStarter tours={tours} onReady={onReady} />
+			<FirstRunStarter tours={tours} profileId={profileId} onReady={onReady} />
 		</NextStep>
 	);
 }
 
-export function ProductTour({ children }: { children: React.ReactNode }) {
+export function ProductTour({ profileId, children }: { profileId: string; children: React.ReactNode }) {
 	const t = useT();
 	const tours = useMemo(() => buildFirstRunTour(t), [t]);
 	return (
 		<NextStepProvider>
-			<TourShell tours={tours}>{children}</TourShell>
+			<TourShell tours={tours} profileId={profileId}>{children}</TourShell>
 		</NextStepProvider>
 	);
 }

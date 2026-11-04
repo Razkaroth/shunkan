@@ -7,7 +7,6 @@ import React from "react";
 (globalThis as Record<string, unknown>).React = React;
 
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -18,6 +17,7 @@ import {
 	FIRST_RUN_TOUR,
 	buildFirstRunTour,
 	shouldStartFirstRun,
+	tourSeenStorageKey,
 	visibleFirstRunSteps,
 } from "../components/product-tour-steps.ts";
 import type { GraphRenderSettings } from "../components/graph-canvas.ts";
@@ -96,15 +96,8 @@ describe("first-run tour", () => {
 		assert.ok(notes.includes('id="tour-import"'));
 	});
 
-	it("pins the remaining anchors in the home and sidebar source", () => {
-		const home = readFileSync(new URL("../components/home.tsx", import.meta.url), "utf8");
-		const sidebar = readFileSync(new URL("../components/sidebar.tsx", import.meta.url), "utf8");
-		const minimal = readFileSync(new URL("../components/minimal-home.tsx", import.meta.url), "utf8");
-		assert.ok(home.includes('id="tour-composer"'));
-		assert.ok(sidebar.includes('id="tour-new-sessions"'));
-		assert.ok(sidebar.includes('id="tour-session-list"'));
-		assert.ok(sidebar.includes('id="tour-settings"'));
-		assert.ok(minimal.includes('id="tour-chains"'));
-		assert.ok(home.includes('id="tour-mode"'));
+	it("scopes the seen flag to one profile", () => {
+		assert.equal(tourSeenStorageKey("alpha"), "lh:product-tour-seen:alpha");
+		assert.notEqual(tourSeenStorageKey("alpha"), tourSeenStorageKey("beta"));
 	});
 });

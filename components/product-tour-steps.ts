@@ -10,8 +10,13 @@ import type { TranslationKey } from "@/src/core";
 
 export const FIRST_RUN_TOUR = "firstRun";
 
-/** localStorage flag set when the learner finishes or skips the tour. */
+/** Prefix for the per-profile localStorage flag set when that profile finishes or skips the tour. */
 export const FIRST_RUN_TOUR_SEEN_KEY = "lh:product-tour-seen";
+
+/** One flag per profile, so finishing the tour on this browser does not hide it from the next profile. */
+export function tourSeenStorageKey(profileId: string): string {
+	return `${FIRST_RUN_TOUR_SEEN_KEY}:${profileId}`;
+}
 
 export type TourCopy = (key: TranslationKey) => string;
 

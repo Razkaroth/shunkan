@@ -22,12 +22,12 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 export default async function ProductLayout({ children }: { children: React.ReactNode }) {
-	const signedIn = (await pageUserId()) !== null;
+	const profileId = await pageUserId();
 	const language = await pageLanguage();
 	return (
 		<I18nProvider initialLanguage={language}>
-			{signedIn ? (
-				<ProductTour>
+			{profileId ? (
+				<ProductTour profileId={profileId}>
 					<ServerEventsProvider>
 						<AppearanceProvider>
 							<PhoneLayoutProvider>
