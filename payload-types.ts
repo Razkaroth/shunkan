@@ -73,6 +73,7 @@ export interface Config {
     verifications: Verification;
     'admin-invitations': AdminInvitation;
     'demo-files': DemoFile;
+    'learner-records': LearnerRecord;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
     'payload-preferences': PayloadPreference;
@@ -91,6 +92,7 @@ export interface Config {
     verifications: VerificationsSelect<false> | VerificationsSelect<true>;
     'admin-invitations': AdminInvitationsSelect<false> | AdminInvitationsSelect<true>;
     'demo-files': DemoFilesSelect<false> | DemoFilesSelect<true>;
+    'learner-records': LearnerRecordsSelect<false> | LearnerRecordsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
     'payload-preferences': PayloadPreferencesSelect<false> | PayloadPreferencesSelect<true>;
@@ -308,6 +310,20 @@ export interface AdminInvitation {
   createdAt: string;
 }
 /**
+ * Durable learner data. Includes private keys. Admin access only.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-records".
+ */
+export interface LearnerRecord {
+  id: string;
+  path: string;
+  kind: string;
+  body?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
  * S3 storage for later demo files.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -377,6 +393,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'demo-files';
         value: string | DemoFile;
+      } | null)
+    | ({
+        relationTo: 'learner-records';
+        value: string | LearnerRecord;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -490,6 +510,17 @@ export interface AdminInvitationsSelect<T extends boolean = true> {
   token?: T;
   expiresAt?: T;
   url?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-records_select".
+ */
+export interface LearnerRecordsSelect<T extends boolean = true> {
+  path?: T;
+  kind?: T;
+  body?: T;
   updatedAt?: T;
   createdAt?: T;
 }

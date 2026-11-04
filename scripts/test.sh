@@ -18,6 +18,8 @@ DATA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/lh-test-XXXXXX")"
 trap 'rm -rf "$DATA_DIR"' EXIT
 
 export LH_DATA_DIR="$DATA_DIR"
+# NODE_ENV=test keeps this suite on the throwaway directory.
+# Hosted runs with MONGODB_URI use the learner-records collection unless LH_STORE=file.
 export NODE_ENV=test
 
 cd "$ROOT"

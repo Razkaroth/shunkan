@@ -18,7 +18,7 @@
  * Version constants: contracts/graph.ts CURRENT_GRAPH_FORMAT_VERSION.
  */
 
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { graphFormatFile } from "../../config.ts";
 import { CURRENT_GRAPH_FORMAT_VERSION } from "../core/contracts/graph.ts";

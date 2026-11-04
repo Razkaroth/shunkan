@@ -16,7 +16,7 @@
  * not authentication; nothing is encrypted.
  */
 
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { INSTALL, LEARNER_ENTRIES, runAsUser, userDataDir } from "../../config.ts";
 import {

@@ -8,7 +8,7 @@
  */
 
 import crypto from "node:crypto";
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { INSTALL, isUserId } from "../../config.ts";
 import {

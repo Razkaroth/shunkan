@@ -30,6 +30,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PATHS, promptsOverrideDir } from "../../config.ts";
+import { readFileSync as readStoredFile } from "../persistence/data-file.ts";
 import { FRAGMENT_RE, isValidSegmentPath, type PromptAgent, type PromptSegmentInfo } from "../core/prompt-segments.ts";
 import { DEFAULT_LANGUAGE, type AppLanguage } from "../core/i18n.ts";
 
@@ -72,7 +73,7 @@ function overrideFileFor(segmentPath: string): string {
 export function readPromptOverride(segmentPath: string): string | null {
 	if (!isValidSegmentPath(segmentPath)) return null;
 	try {
-		return fs.readFileSync(overrideFileFor(segmentPath), "utf-8");
+		return readStoredFile(overrideFileFor(segmentPath), "utf-8");
 	} catch {
 		return null;
 	}

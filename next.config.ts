@@ -81,6 +81,11 @@ const nextConfig: NextConfig = {
 			// npm installs only the current platform's binary, so this glob
 			// resolves to exactly one Skia binary per build.
 			"node_modules/@napi-rs/canvas-*/**/*",
+			// Hosted persistence runs in an unbundled worker thread. Next does
+			// not trace that entrypoint, and mongodb is nested under mongoose
+			// rather than hoisted, so the driver must be copied explicitly.
+			"src/persistence/mongo-worker.mjs",
+			"node_modules/mongoose/node_modules/mongodb/**/*",
 			// Pi-compatible image resizing runs in an unbundled worker. Photon
 			// loads its colocated WASM through Node, also in packaged Electron.
 			"src/agent/image-processing/*.mjs",

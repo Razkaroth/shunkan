@@ -7,7 +7,7 @@
  * composition root (src/server/stores.ts); nothing else constructs it.
  */
 
-import * as fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
