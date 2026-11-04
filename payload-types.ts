@@ -102,8 +102,12 @@ export interface Config {
     defaultIDType: string;
   };
   fallbackLocale: null;
-  globals: {};
-  globalsSelect: {};
+  globals: {
+    'feature-flags': FeatureFlag;
+  };
+  globalsSelect: {
+    'feature-flags': FeatureFlagsSelect<false> | FeatureFlagsSelect<true>;
+  };
   locale: null;
   widgets: {
     collections: CollectionsWidget;
@@ -600,6 +604,22 @@ export interface CollectionsWidget {
  */
 export interface Auth {
   [k: string]: unknown;
+}
+/**
+ * Feature flags. Each flag is its own checkbox on the `feature-flags` global.
+ * `payAsYouGo` defaults to false.
+ */
+export interface FeatureFlag {
+  id: string;
+  payAsYouGo?: boolean | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+export interface FeatureFlagsSelect<T extends boolean = true> {
+  payAsYouGo?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
 }
 
 

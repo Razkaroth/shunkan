@@ -12,6 +12,7 @@ export const settings = {
 	"settings.section.keyboard": "Keyboard",
 	"settings.section.keyboard.hint": "Stored on this device",
 	"settings.section.users": "Users",
+	"settings.section.billing": "Billing",
 	"settings.section.general": "General",
 	"settings.general.autoUpdate": "Auto-update",
 	"settings.general.autoUpdate.aria": "auto update",
@@ -303,4 +304,20 @@ export const settings = {
 	// Models: advanced toggle
 	"settings.agent.advanced.hide": "Hide advanced settings",
 	"settings.agent.advanced.show": "Show advanced settings",
+
+	"settings.billing.loading": "Loading billing…",
+	"settings.billing.unavailable": "Billing is not configured on this server.",
+	"settings.billing.plan": "Basic",
+	"settings.billing.planPrice": "150 MXN per month",
+	"settings.billing.split": "75 MXN is the monthly token allotment. It does not roll over.",
+	"settings.billing.monthly": "Monthly tokens",
+	"settings.billing.rechargeBalance": "Recharge",
+	"settings.billing.rechargeHint": "Recharge does not expire and is spent after the monthly allotment.",
+	"settings.billing.subscribe": "Subscribe",
+	"settings.billing.recharge": "Recharge",
+	"settings.billing.amount": "Amount in MXN",
+	"settings.billing.working": "Opening checkout…",
+	"settings.billing.failed": "Checkout could not be started.",
+	"settings.billing.paygOn": "Pay as you go is on. Usage past your credits is billed.",
+	"settings.billing.empty": "No monthly tokens or recharge left.",
 } as const;
