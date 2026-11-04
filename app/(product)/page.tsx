@@ -12,6 +12,7 @@ import { pageUserId } from "../_lib/user";
 // visitors get the public marketing entry; a session still gets the graph.
 export const dynamic = "force-dynamic";
 
+/** Title and description for the public marketing page, or the product home when a session is open. */
 export async function generateMetadata(): Promise<Metadata> {
 	const userId = await pageUserId();
 	if (userId) {
@@ -28,6 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
 	};
 }
 
+/** Public marketing entry when no profile session is open. A session still gets the product home. */
 export default async function HomePage() {
 	const userId = await pageUserId();
 	if (!userId) return <MarketingHome />;
