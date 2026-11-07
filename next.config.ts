@@ -78,7 +78,7 @@ const nextConfig: NextConfig = {
 			// Wave E (2026-10-10): pdf_render paints via @napi-rs/canvas — its
 			// platform binary (@napi-rs/canvas-<platform>-<arch>) is a dynamic
 			// optional-dep require the tracer cannot see. Builds run per-OS and
-			// npm installs only the current platform's binary, so this glob
+			// The install includes only the current platform's binary, so this glob
 			// resolves to exactly one Skia binary per build.
 			"node_modules/@napi-rs/canvas-*/**/*",
 			// Hosted persistence runs in an unbundled worker thread. Next does

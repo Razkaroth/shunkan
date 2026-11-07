@@ -7,7 +7,7 @@
  * Reads ONLY the ledgers (nodes / edges / mappings / sources); writes ONLY
  * data/graph/positions.json — no LLM calls, no extraction, no chat records.
  *
- *   npx tsx scripts/replay-layout.ts [--depth=vertical|radial]
+ *   pnpm exec tsx scripts/replay-layout.ts [--depth=vertical|radial]
  *
  * --depth regenerates the ledger WITH inference-depth anchoring (the
  * playground mode baked into the rest state); omit it for the free layout.

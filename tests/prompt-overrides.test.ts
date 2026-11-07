@@ -71,7 +71,7 @@ after(() => {
 	assert.deepEqual(
 		snapshotDir(REPO_PROMPTS),
 		REAL_PROMPTS_BEFORE,
-		"real data/prompts survives npm test byte-for-byte (the old suite wiped it)",
+		"real data/prompts survives pnpm test byte-for-byte (the old suite wiped it)",
 	);
 	fs.rmSync(TMP_DATA, { recursive: true, force: true });
 });
