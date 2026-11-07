@@ -21,8 +21,8 @@ Local runtime for this Shunkan checkout.
   dev logs [args...]      Tail PM2 logs for the Next app
   dev agent <cmd>         Cursor worker: start|stop|restart|status|logs|print|run
   dev lint | typecheck | test | build
-                          npm run <task>
-  dev seed [args...]      npm run seed -- [args...]
+                          pnpm run <task>
+  dev seed [args...]      pnpm run seed -- [args...]
 EOF
 }
 
@@ -230,14 +230,14 @@ case "$sub" in
 		exec bash "$root/devenv/agent-worker.sh" "$@"
 		;;
 	lint|typecheck|test|build)
-		command -v npm >/dev/null 2>&1 || die "npm not on PATH"
+		command -v pnpm >/dev/null 2>&1 || die "pnpm not on PATH"
 		printf 'dev: %s\n' "$sub" >&2
-		exec npm run "$sub" -- "$@"
+		exec pnpm run "$sub" -- "$@"
 		;;
 	seed)
-		command -v npm >/dev/null 2>&1 || die "npm not on PATH"
+		command -v pnpm >/dev/null 2>&1 || die "pnpm not on PATH"
 		printf 'dev: seed\n' >&2
-		exec npm run seed -- "$@"
+		exec pnpm run seed -- "$@"
 		;;
 	*)
 		die "unknown command: $sub (try: dev --help)"
