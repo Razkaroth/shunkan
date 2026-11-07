@@ -82,7 +82,7 @@ Profiles are **local profiles, not accounts**. A profile's PIN only stops someon
 | Stores and resolved settings | `src/server/stores.ts`, `src/store/`, `src/core/settings-resolution.ts` |
 | Provider/model configuration | `src/agent/models.ts`, `src/server/model-catalog.ts`, linked provider references above |
 | Push notifications | `src/core/events.ts`, `src/server/events-stream.ts`, `components/server-events.tsx` |
-| Local stack (Mongo, Silo, PM2, agent) | `devenv/dev.sh`, `.envrc` |
+| Local stack (Mongo, Silo, PM2, preview, agent) | `./dev`, `devenv/dev.sh`, `.envrc` |
 
 PDF note imports use the same extraction pipeline after local conversion to page-marked Markdown by `src/agent/subagents/pdf-markdown.ts`.
 
