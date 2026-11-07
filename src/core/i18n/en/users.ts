@@ -56,4 +56,21 @@ export const users = {
 	"users.role.hasPin": " · PIN",
 
 	"users.changeUser": "Change user",
+
+	"users.trial.haveCode": "Have a trial code?",
+	"users.trial.title": "University trial",
+	"users.trial.note": "One invite. DeepSeek V4.1 Flash runs the main agent and both support agents. The trial also includes one GPT-Sol session.",
+	"users.trial.code": "Invite code",
+	"users.trial.code.placeholder": "Code",
+	"users.trial.redeem": "Redeem",
+	"users.trial.sol.start": "Start the GPT-Sol session",
+	"users.trial.sol.open": "Return to the GPT-Sol session",
+	"users.trial.sol.end": "End GPT-Sol session",
+	"users.trial.sol.waiting": "This session ends when the reply lands. You sign up before you can continue.",
+	"users.trial.signup.title": "Sign up to continue",
+	"users.trial.signup.body": "The GPT-Sol session is over. Create an account before you continue. This trial does not take payment.",
+	"users.trial.signup.email": "Email",
+	"users.trial.signup.password": "Password",
+	"users.trial.signup.name": "Name",
+	"users.trial.signup.submit": "Create account",
 };

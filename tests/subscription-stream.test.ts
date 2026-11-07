@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { normalizeContext, type Api, type AssistantMessage, type Model } from "@earendil-works/pi-ai";
-import { piModels, piEngineForSpec } from "../src/agent/models.ts";
+import { piModels, providerEngineForSpec } from "../src/agent/models.ts";
 import { NATIVE_SUBSCRIPTIONS, type NativeSubscriptionSnapshot } from "../src/core/contracts/subscriptions.ts";
 import { refreshSubscriptionModels, nativeSubscriptionModels, subscriptionAbortController, subscriptionRequest } from "../src/agent/subscription-bridge.ts";
 import { subscriptionHistory } from "../src/agent/subscription-stream.ts";
@@ -56,7 +56,7 @@ for (const p of NATIVE_SUBSCRIPTIONS) test(`${p.providerId}: every SDK transport
 	const apis = new Set<string>();
 	for (const native of piModels().getModels(p.providerId)) {
 		if (apis.has(native.api)) continue; apis.add(native.api);
-		const engine = piEngineForSpec({ provider: p.logicalId, id: native.id }, false);
+		const engine = providerEngineForSpec({ provider: p.logicalId, id: native.id }, false);
 		let requests = 0, payloadObserved = false;
 		let actualBody: unknown;
 		const runId = `${p.providerId}-${native.api}`;
@@ -86,7 +86,7 @@ test("failed OAuth lease never dispatches despite valid-looking ambient keys; fo
 	let requests = 0; denied = true;
 	try {
 		for (const p of NATIVE_SUBSCRIPTIONS) {
-			const model = piModels().getModels(p.providerId)[0]!, engine = piEngineForSpec({ provider: p.logicalId, id: model.id }, false);
+			const model = piModels().getModels(p.providerId)[0]!, engine = providerEngineForSpec({ provider: p.logicalId, id: model.id }, false);
 			const fetch = async () => { requests++; throw new Error("must not dispatch"); };
 			assert.equal((await engine.streamFn(engine.model, context, { fetch }).result()).stopReason, "error");
 			assert.equal((await engine.streamFn(engine.model, context, { fetch, headers: { AUTHORIZATION: null } }).result()).stopReason, "error");
@@ -97,7 +97,7 @@ test("failed OAuth lease never dispatches despite valid-looking ambient keys; fo
 test("a helper refused before dispatch reports no phantom usage or extraction step", async () => {
 	denied = true; let usage = 0, steps = 0;
 	try {
-		const model = piModels().getModels("xai")[0]!, engine = piEngineForSpec({ provider: "xai-subscription", id: model.id });
+		const model = piModels().getModels("xai")[0]!, engine = providerEngineForSpec({ provider: "xai-subscription", id: model.id });
 		await assert.rejects(runSubagent([], { role: "researcher", engine, systemPrompt: "Offline fixture", prompt: "Do not dispatch", maxTurns: 1, onUsage: () => { usage++; }, onAssistantMessage: () => { steps++; } }));
 		assert.equal(usage, 0); assert.equal(steps, 0);
 	} finally { denied = false; }

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { type Model } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
-import { piModels, piEngineForSpec, APP_IDENTITY } from "../src/agent/models.ts";
+import { piModels, providerEngineForSpec, APP_IDENTITY } from "../src/agent/models.ts";
 import { refreshChatGPTModels, chatGPTScopeCurrent } from "../src/agent/chatgpt-bridge.ts";
 import { ChatGPTRequestCycle } from "../src/agent/chatgpt-request-cycle.ts";
 import { createTeacherAgent } from "../src/agent/teacher-agent.ts";
@@ -82,7 +82,7 @@ async function nativeRun(where: typeof cut, staged: boolean, withLearner = true,
   commitStaged: () => { if (commitThrows) throw new Error("scratch durable write failure"); committed++; },
   restoreAutomatic: (ids, retained) => { restored++; assert(ids.has(marker.id)); assert(!retained.has(marker.id)); agent.clearSteeringQueue(); },
  });
- const raw = piEngineForSpec({ provider: "chatgpt", id: model.id }, () => purpose.background, cycle);
+ const raw = providerEngineForSpec({ provider: "chatgpt", id: model.id }, () => purpose.background, cycle);
  const engine = { ...raw, streamFn: (m: any, context: any, opts: any) => raw.streamFn(m, context, { ...opts, onPayload: async (payload: unknown) => { if (lateAutomatic && !handedLate) { handedLate = true; agent.steer(marker); } if (cut === "payload") { cut = "none"; await Promise.resolve(); revoke(); } return payload; } }) };
  const agent = createTeacherAgent(undefined, { engine, messages, chatId: "scratch-native-session", tools: withTool ? { again: { name: "again", label: "again", description: "scratch", parameters: Type.Object({}), execute: async () => { executed++; return { content: [{ type: "text" as const, text: "Done" }], details: {} }; } } } : {}, callPurpose: purpose, requestCycle: cycle, onUsage: () => usage++ });
  if (!staged && !lateAutomatic) agent.steer(marker);

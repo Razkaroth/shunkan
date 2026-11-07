@@ -26,7 +26,7 @@ These are not a complete hexagonal-architecture proof. Some core modules are Nod
 
 These are different lifetimes:
 
-- **Conversation:** a durable `ChatRecord` in `data/chats/<id>.json`, containing native `LhMessage[]`, settings, an optional plan tree and usage logs. Missing `kind` means teaching; `kind: "practice"` selects the practitioner.
+- **Conversation:** a durable `ChatRecord` (Mongo `learner-records` when hosted; `data/chats/<id>.json` in the file-backed test seam), containing native `LhMessage[]`, settings, an optional plan tree and usage logs. Missing `kind` means teaching; `kind: "practice"` selects the practitioner.
 - **Engine:** a resolved Pi model, stream function and thinking level (`PiEngine` in `src/agent/models.ts`). It is provider-aware, not an OpenRouter-only abstraction.
 - **Agent:** a fresh `@earendil-works/pi-agent-core` `Agent` constructed for one application turn, with that conversation's history, current prompt and current tool registry.
 - **Application turn:** one accepted input followed by a server-owned agent run. A run can make several model calls and execute tools before it ends. It is not an HTTP connection or a single provider generation.
@@ -166,7 +166,7 @@ The route returns per-upload `requestIndex` and completion outcomes (`completed`
 
 ### Source organization
 
-The chains view inventories all session and imported-source records, including those with no extracted graph content. Individual sources use Book/BookOpen icons; nested organizational folders use Folder/FolderOpen. A source's default imported name is its exact basename minus the final extension, with no tidying or capitalization. Inline session renames use the existing chat title; imported display overrides and folder names/placement live separately in `data/graph/source-organization.json` (lazy, versioned presentation metadata).
+The chains view inventories all session and imported-source records, including those with no extracted graph content. Individual sources use Book/BookOpen icons; nested organizational folders use Folder/FolderOpen. A source's default imported name is its exact basename minus the final extension, with no tidying or capitalization. Inline session renames use the existing chat title; imported display overrides and folder names/placement live separately at `graph/source-organization.json` (lazy, versioned presentation metadata; a learner-records document when hosted).
 
 Folder imports reconstruct directories containing supported files, not empty/unsupported-only directories. Stable original-directory associations reuse folders after a rename or move, while re-import preserves existing source names and placement. Drag-and-drop changes parent folders only; Name/Props/Created sorting remains authoritative. These folders do not yet appear in the sessions sidebar.
 
@@ -198,22 +198,27 @@ The notification bus (`src/core/events.ts`) is ephemeral and process-local. `src
 
 Notifications generally follow the corresponding mutation. Chat content-store operations are deliberately silent; turn lifecycle events or explicit `record-changed` notifications cover their visible effects. Consumers debounce bursts and refetch on reconnect because notifications have no durable replay log. While a view owns a live turn stream, its terminal controls settlement adoption; notification-triggered fetches must not replace partial state underneath it. A settlement event means the run ended, not proof that an earlier failed disk write succeeded.
 
-`src/server/observability.ts` composes background job/extraction status, usage/context metadata and a graph revision derived from file mtimes. Turn liveness is separate from background worker status. Abort routes target actual running work; dismissing an interaction is a different operation. Coverage panels retain bounded run-scoped reads for finer-grained progress; 409 retries are bounded race recovery, not standing application polling.
+`src/server/observability.ts` composes background job/extraction status, usage/context metadata and a graph revision derived from record timestamps (file mtimes in the file-backed seam). Turn liveness is separate from background worker status. Abort routes target actual running work; dismissing an interaction is a different operation. Coverage panels retain bounded run-scoped reads for finer-grained progress; 409 retries are bounded race recovery, not standing application polling.
 
 ## 8. Storage and compatibility
 
-[`config.ts`](../config.ts) anchors shipped prompt assets to the application root and mutable state to `LH_DATA_DIR` (default: repo `data/`). The main storage ports are semantic interfaces in `src/core/ports.ts`, not a generic document database.
+[`config.ts`](../config.ts) anchors shipped prompt assets to the application root. Mutable records are addressed by `LH_DATA_DIR` (default: repo `data/`) and `LH_AUTH_FILE`. The ports in `src/core/ports.ts` stay the same.
 
-| Data | Persistence |
+Hosted runs (`MONGODB_URI` set, `NODE_ENV` not `test`, unless `LH_STORE=file`) write those records into the Payload collection `learner-records`. `LH_STORE=database` forces that path. `NODE_ENV=test` and `LH_STORE=file` keep files in a throwaway directory so the suite can keep using the old layout. Each document's `path` is the old relative path (`chats/<id>.json`, `graph/nodes.jsonl`, `install/auth.json`, …) and `body` is the same JSON or JSONL text.
+
+| Data | Record |
 |---|---|
-| Conversations, plans, outcomes and usage | `chats/*.json` |
-| Worker computation and delivery obligations | `jobs/*.json` |
+| Conversations, plans, outcomes and usage | `chats/<id>.json` |
+| Worker computation and delivery obligations | `jobs/<id>.json` |
 | Proposition assertions, chain assertions, extraction checkpoints/coverage | `graph/{nodes,chains,sessions,coverage}.jsonl` |
-| Imported source metadata/usage, resting positions, render preferences | JSON maps in `graph/` |
+| Imported source metadata/usage, resting positions, render preferences, format stamp, source organization | JSON in `graph/` |
 | Non-secret settings deltas and prompt overrides | `settings.json`, `prompts/` |
-| API keys/custom endpoint credential binding | Separate `auth.json`, located by `LH_AUTH_FILE` |
+| Profiles, host switches, browser sessions | `users.json`, `host.json`, `sessions.json` |
+| API keys and web subscription credentials | `install/auth.json`, `install/*-credentials.json` |
 
-The adapters use synchronous filesystem operations. JSONL readers skip corrupt or shape-invalid lines; graph derivation unions repeated identities/provenance. Some replacements use temp-file rename; whole-file chat/settings/source writes do not provide a database transaction. A synchronous read/modify/write section cannot interleave in the same event loop, but that is not cross-process locking or crash atomicity. Use one server owner for a data/auth profile.
+Calls stay synchronous: a database round trip blocks the caller, so a read/modify/write in one turn still cannot interleave on the same event loop. That is not a multi-document transaction or cross-process lock. Use one server owner. JSONL readers still skip corrupt lines. Whole-file chat/settings/source replacement is one document write.
+
+Left on disk: shipped prompts, `debug/` traces, and scratch files (headless HTML, PDF extracts, Claude temp prompts). Those are not the product record. A hosted disk does not keep them.
 
 Chat writes stamp the supported chat schema version; an unstamped record reads as the original version, while a newer-version chat is refused. Graph-family files share lazy `graph/format.json`; newer graph formats throw on guarded reads. Positions are rebuildable and unstamped. Settings use their own schema counter and sanitizer/default resolution, not the same newer-version refusal policy. These counters are not app release versions and do not promise migration from every historical scratch format. The graph adapter also removes retired `edges.jsonl`/`events.jsonl` at initialization, so importing a store module is not a universally side-effect-free inspection method.
 
@@ -223,9 +228,9 @@ Golden fixtures under `tests/fixtures/golden-data/` exercise real saved records 
 
 Production Electron launches the standalone Next server as a private child on loopback, sets the data/auth paths and loads a sandboxed renderer. Teaching, practice, extraction and storage stay server-side. Main-process navigation/permission guards and private credential transport are desktop boundaries, not a web multi-user authentication system. Build/packaging guards in `scripts/build-server.mjs` check data exclusion and traced assets; native runtime smoke scripts check the packaged provider/renderer dependencies. See [desktop release](desktop-release.md).
 
-`src/agent/models.ts` exposes Pi's native provider collection plus app bridges. Settings supply strong/cheap/vision slots and background-role overrides; there are **no factory model pins**. New sessions copy the strong slot into their conversation settings. Existing explicit session choices remain local; absent model/thinking fields still resolve through the conversation fallback. Missing configuration/readiness refuses at the point of need. Background roles resolve independently and do not inherit an in-session model pick.
+`src/agent/models.ts` resolves a model from the catalog, then `src/agent/gateway-provision.ts` streams it with the Vercel AI SDK against AI Gateway. Settings supply strong/cheap/vision slots and background-role overrides; there are **no factory model pins**. New sessions copy the strong slot into their conversation settings. Existing explicit session choices remain local; absent model/thinking fields still resolve through the conversation fallback. Missing configuration refuses at the point of need. Background roles resolve independently and do not inherit an in-session model pick.
 
-Ordinary API credentials are read through the key seam, with real environment variables taking precedence over saved file values. Web/dev subscription connections have a server-owned credential directory; packaged subscriptions keep refresh credentials in Electron main and use private scoped request transport. These logical subscription routes do not silently fall back to API-key billing. Claude Code is a separate local CLI provider with its own authentication/process lifecycle; custom endpoints have their own configuration and credential binding. Focused references:
+Gateway authentication is `AI_GATEWAY_API_KEY`, or Vercel OIDC when that key is unset. Stripe metering uses the gateway headers `stripe-restricted-access-key` (from `STRIPE_RESTRICTED_ACCESS_KEY`) and `stripe-customer-id` (the active profile's `stripeCustomerId`). The gateway emits the meter events. Provider API keys, custom endpoints, and ChatGPT/Codex or other subscription credentials are not the model-call credential. Search and dictation keys are unchanged. Focused references:
 
 - [Claude Code](claude-code.md)
 - [Custom providers](custom-providers.md)

@@ -17,7 +17,7 @@
  * healthy. The dock's chips + graph refetch track progress live through
  * /api/graph/status, as with session runs.
  */
-import { convertPdf, extraction, joinPages, NotesImportError, sourceDirectory, withUser } from "@/src/server";
+import { abortOwnNotesExtractions, convertPdf, extraction, joinPages, NotesImportError, sourceDirectory, trialBlockResponse, trialSignupMessage, withUser } from "@/src/server";
 import { MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits.ts";
 import {
 	emit,
@@ -110,6 +110,8 @@ async function readImportForm(request: Request): Promise<FormData> {
 }
 
 async function handlePOST(request: Request) {
+	const blocked = trialBlockResponse();
+	if (blocked) return blocked;
 	let form: FormData;
 	try {
 		form = await readImportForm(request);
@@ -139,12 +141,32 @@ async function handlePOST(request: Request) {
 	}
 	const results: ImportResult[] = [];
 	const queue = files.map((file, requestIndex) => ({ file, requestIndex, filePath: paths[requestIndex]! }));
+	const stopForTrial = (): string | null => {
+		const message = trialSignupMessage();
+		if (!message) return null;
+		abortOwnNotesExtractions();
+		return message;
+	};
 	const workers = Array.from({ length: Math.min(3, files.length) }, async () => {
 		for (;;) {
+			const blocked = stopForTrial();
+			if (blocked) {
+				for (;;) {
+					const skipped = queue.shift();
+					if (!skipped) return;
+					results.push({ filePath: skipped.filePath, requestIndex: skipped.requestIndex, outcome: "failed", ok: false, error: blocked });
+				}
+			}
 			const next = queue.shift();
 			if (!next) return;
 			const { file, requestIndex, filePath } = next;
+			const watch = setInterval(() => { stopForTrial(); }, 200);
 			try {
+				const stillBlocked = stopForTrial();
+				if (stillBlocked) {
+					results.push({ filePath, requestIndex, outcome: "failed", ok: false, error: stillBlocked });
+					continue;
+				}
 				const notes = await readNotesFile(file);
 				if (notes.kind === "refused") {
 					results.push({ filePath, requestIndex, outcome: "failed", ok: false, error: notes.error });
@@ -166,7 +188,10 @@ async function handlePOST(request: Request) {
 						...(err instanceof NotesImportError ? { stats: err.partialStats } : {}),
 						error: err instanceof Error ? err.message : String(err) });
 				}
-			} finally { emit("sources-changed", {}); }
+			} finally {
+				clearInterval(watch);
+				emit("sources-changed", {});
+			}
 		}
 	});
 	await Promise.all(workers);

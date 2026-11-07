@@ -8,7 +8,7 @@
  * awaits, so they are atomic within the single-threaded event loop.
  */
 
-import * as fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";

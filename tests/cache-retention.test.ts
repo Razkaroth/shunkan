@@ -3,7 +3,7 @@ import { after, test } from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { Type, createProvider, createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, normalizeContext, type CacheRetention, type SimpleStreamOptions, type StreamFunction } from "@earendil-works/pi-ai";
+import { createProvider, createFauxCore, fauxAssistantMessage, fauxText, normalizeContext, type CacheRetention, type SimpleStreamOptions, type StreamFunction } from "@earendil-works/pi-ai";
 import { CACHE_RETENTIONS, sanitizeUserSettings, ROLE_SLOT, type UserSettings } from "../src/core/settings.ts";
 import { resolveSettings, resolveConversationSpec, resolveRoleSpec } from "../src/core/settings-resolution.ts";
 import { parseModelsSettingsBody, parseAgentSettingsBody, parseSettingsBody } from "../src/server/settings-body.ts";
@@ -15,7 +15,7 @@ const originalEnv = process.env, originalFetch = globalThis.fetch;
 process.env = { PATH: originalEnv.PATH, HOME: directory, NODE_ENV: "test", NODE_TEST_CONTEXT: originalEnv.NODE_TEST_CONTEXT, LH_DATA_DIR: directory, LH_AUTH_FILE: path.join(directory, "auth.json"), ANTHROPIC_API_KEY: "fixture", OPENAI_API_KEY: "fixture", OPENROUTER_API_KEY: "fixture" };
 fs.writeFileSync(process.env.LH_AUTH_FILE!, "{}");
 globalThis.fetch = async () => { throw new Error("CLOSED: unexpected network request"); };
-const { piModels, piEngineForSpec, configureProviderSource } = await import("../src/agent/models.ts");
+const { piModels, providerEngineForSpec, configureProviderSource } = await import("../src/agent/models.ts");
 const { clampModelsLevels, catalogSlots } = await import("../src/server/model-catalog.ts");
 const { readSettings, writeSettings } = await import("../src/store/settings.ts");
 const { PUT } = await import("../app/api/settings/[section]/route.ts");
@@ -27,7 +27,7 @@ after(() => { process.env = originalEnv; globalThis.fetch = originalFetch; fs.rm
 const model = { provider: "anthropic", id: "claude-sonnet-4-6" };
 const context = normalizeContext({ systemPrompt: "Stable instructions", messages: [{ role: "user", content: "offline", timestamp: 1 }] });
 
-async function payload(engine: ReturnType<typeof piEngineForSpec>, options: SimpleStreamOptions = {}) {
+async function payload(engine: ReturnType<typeof providerEngineForSpec>, options: SimpleStreamOptions = {}) {
 	let captured: unknown;
 	const result = await engine.streamFn(engine.model, context, {
 		...options,
@@ -88,8 +88,8 @@ test("untouched/default source produces exactly the native payload, including en
 	for (const env of [undefined, "long"]) {
 		if (env === undefined) delete process.env.PI_CACHE_RETENTION; else process.env.PI_CACHE_RETENTION = env;
 		for (const spec of [model, { provider: "openai", id: "gpt-4o-mini" }, { provider: "openrouter", id: "anthropic/claude-sonnet-4.6" }]) {
-			const baseline = await payload(piEngineForSpec({ ...spec, thinkingLevel: "off" }));
-			const defaultSource = await payload(piEngineForSpec({ ...spec, thinkingLevel: "off" }, true, undefined, () => undefined));
+			const baseline = await payload(providerEngineForSpec({ ...spec, thinkingLevel: "off" }));
+			const defaultSource = await payload(providerEngineForSpec({ ...spec, thinkingLevel: "off" }, true, undefined, () => undefined));
 			assert.deepEqual(defaultSource, baseline, `${spec.provider}: untouched default must change nothing`);
 		}
 	}
@@ -99,7 +99,7 @@ test("untouched/default source produces exactly the native payload, including en
 test("explicit native preferences win over environment; resetting to default restores it in the SAME engine", async () => {
 	process.env.PI_CACHE_RETENTION = "long";
 	let retention: CacheRetention | undefined;
-	const engine = piEngineForSpec({ ...model, thinkingLevel: "off" }, true, undefined, () => retention);
+	const engine = providerEngineForSpec({ ...model, thinkingLevel: "off" }, true, undefined, () => retention);
 	for (const value of [undefined, "short", "none", "long", undefined] as const) {
 		retention = value;
 		const body = await payload(engine);
@@ -113,37 +113,47 @@ test("explicit native preferences win over environment; resetting to default res
 	delete process.env.PI_CACHE_RETENTION;
 });
 
-test("real conversation wiring inherits live Strong retention without changing the chat's own model", async () => {
-	const id = "cache-chat-fixture";
+test("a conversation calls AI Gateway with the chat model, not the Strong slot model", async () => {
+	const id = "zai";
 	const faux = createFauxCore({});
 	const entry = { ...faux.getModel(), provider: id, id: "chat-model" };
-	const seen: Array<{ model: string; options: SimpleStreamOptions }> = [];
-	const stream: StreamFunction = (m, c, options) => {
-		seen.push({ model: m.id, options: options ?? {} });
-		return faux.streamSimple(m, c, options);
+	const seen: string[] = [];
+	const stream: StreamFunction = (m) => {
+		seen.push(m.id);
+		throw new Error("provider transport must not run");
 	};
 	piModels().setProvider(createProvider({ id, models: [entry, { ...entry, id: "strong-model" }], auth: { apiKey: { name: "fixture", resolve: async () => ({ auth: {} }) } }, api: { stream, streamSimple: stream } }));
 	const record: UserSettings = { version: 1, graph: { enabled: false }, models: { strong: { model: { provider: id, id: "strong-model" }, cacheRetention: "long" } } };
 	writeSettings(record);
 	const chat = chatStore.createChat("Synthetic cache-retention test");
 	chatStore.saveSettings(chat.id, { model: { provider: id, id: "chat-model" } });
-	faux.setResponses([
-		fauxAssistantMessage([fauxToolCall("again", {}, { id: "cache-again" })], { stopReason: "toolUse" }),
-		fauxAssistantMessage([fauxText("done")]),
-	]);
-	const response = await handleChatInput(chat.id, { type: "text", text: "offline" }, (options) => createTeacherAgent(undefined, {
-		...options,
-		tools: { again: { name: "again", label: "again", description: "fixture", parameters: Type.Object({}), execute: async () => {
-			writeSettings({ ...record, models: { strong: { ...record.models!.strong, cacheRetention: "short" } } });
-			return { content: [{ type: "text", text: "done" }], details: {} };
-		} } },
-	}));
-	assert.equal(response.status, 200, await response.clone().text());
-	const handle = runningTurn(chat.id);
-	if (handle) await new Response(handle.subscribe()).text();
-	assert.deepEqual(seen.map((call) => [call.model, call.options.cacheRetention]), [["chat-model", "long"], ["chat-model", "short"]]);
-	assert.deepEqual(chatStore.getChat(chat.id)?.settings?.model, { provider: id, id: "chat-model" });
-	piModels().deleteProvider(id);
+	const previousFetch = globalThis.fetch;
+	const previousKey = process.env.AI_GATEWAY_API_KEY;
+	process.env.AI_GATEWAY_API_KEY = "gateway-test-key";
+	const requested: string[] = [];
+	globalThis.fetch = async (input, init) => {
+		const request = new Request(input, init);
+		assert.equal(new URL(request.url).hostname, "ai-gateway.vercel.sh");
+		assert.equal(request.headers.get("authorization"), "Bearer gateway-test-key");
+		requested.push(request.headers.get("ai-language-model-id") ?? "");
+		return new Response(JSON.stringify({ error: { message: "fixture" } }), { status: 401, headers: { "content-type": "application/json" } });
+	};
+	try {
+		const response = await handleChatInput(chat.id, { type: "text", text: "offline" }, (options) => createTeacherAgent(undefined, options));
+		assert.equal(response.status, 200, await response.clone().text());
+		const handle = runningTurn(chat.id);
+		if (handle) await new Response(handle.subscribe()).text();
+		assert.deepEqual(seen, []);
+		assert.ok(requested.length >= 1);
+		assert.ok(requested.every((modelId) => modelId === `${id}/chat-model`));
+		assert.deepEqual(chatStore.getChat(chat.id)?.settings?.model, { provider: id, id: "chat-model" });
+		assert.equal(readSettings()?.models?.strong?.cacheRetention, "long");
+	} finally {
+		globalThis.fetch = previousFetch;
+		if (previousKey === undefined) delete process.env.AI_GATEWAY_API_KEY;
+		else process.env.AI_GATEWAY_API_KEY = previousKey;
+		piModels().deleteProvider(id);
+	}
 });
 
 test("slot source passes native values unchanged; freshness and in-flight snapshot apply to built-in AND custom dispatch", async () => {
@@ -161,7 +171,7 @@ test("slot source passes native values unchanged; freshness and in-flight snapsh
 		if (custom) configureProviderSource({ isCustom: (value) => value === id, sync: (models) => { models.setProvider(provider); } });
 		else piModels().setProvider(provider);
 		let retention: CacheRetention | undefined;
-		const engine = piEngineForSpec({ provider: id, id: entry.id }, true, undefined, () => retention);
+		const engine = providerEngineForSpec({ provider: id, id: entry.id }, true, undefined, () => retention);
 		for (const value of [undefined, "long", "short", "none", undefined] as const) {
 			retention = value;
 			const request = engine.streamFn(engine.model, context, { sessionId: "same-agent" });

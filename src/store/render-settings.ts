@@ -9,7 +9,7 @@
  * silently shift a slider.
  */
 
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { renderSettingsFile } from "../../config.ts";
 import { DEFAULT_RENDER_SETTINGS, sanitizeRenderSettings, type GraphRenderSettings } from "../core/render-settings.ts";

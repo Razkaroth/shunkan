@@ -57,4 +57,21 @@ export const users: Record<keyof typeof en, string> = {
 	"users.role.hasPin": " · PIN",
 
 	"users.changeUser": "Cambiar de usuario",
+
+	"users.trial.haveCode": "¿Tienes un código de prueba?",
+	"users.trial.title": "Prueba universitaria",
+	"users.trial.note": "Una invitación. DeepSeek V4.1 Flash lleva el agente principal y los dos de apoyo. La prueba incluye además una sesión de GPT-Sol.",
+	"users.trial.code": "Código de invitación",
+	"users.trial.code.placeholder": "Código",
+	"users.trial.redeem": "Canjear",
+	"users.trial.sol.start": "Empezar la sesión de GPT-Sol",
+	"users.trial.sol.open": "Volver a la sesión de GPT-Sol",
+	"users.trial.sol.end": "Terminar la sesión de GPT-Sol",
+	"users.trial.sol.waiting": "Esta sesión termina cuando llega la respuesta. Hay que registrarse antes de seguir.",
+	"users.trial.signup.title": "Regístrate para seguir",
+	"users.trial.signup.body": "La sesión de GPT-Sol terminó. Crea una cuenta antes de seguir. Esta prueba no cobra.",
+	"users.trial.signup.email": "Correo",
+	"users.trial.signup.password": "Contraseña",
+	"users.trial.signup.name": "Nombre",
+	"users.trial.signup.submit": "Crear cuenta",
 };

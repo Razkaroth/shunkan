@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { UserSelect } from "@/components/user-select";
-import { usersSnapshot } from "@/src/server";
+import { trialStatusFor, usersSnapshot } from "@/src/server";
 import { pageUserId } from "../../_lib/user";
 
 export const dynamic = "force-dynamic";
@@ -10,5 +10,5 @@ export const dynamic = "force-dynamic";
  *  ends the session before landing here. */
 export default async function UsersPage() {
 	if (await pageUserId()) redirect("/");
-	return <UserSelect snapshot={usersSnapshot(undefined)} />;
+	return <UserSelect snapshot={usersSnapshot(undefined)} trialOpen={trialStatusFor(null).open} />;
 }

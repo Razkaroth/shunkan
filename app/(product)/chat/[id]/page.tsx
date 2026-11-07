@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { Chat } from "@/components/chat";
+import { TrialSolBar } from "@/components/trial-flow";
 import { slotsConfigured } from "@/src/core";
-import { compactionInFlight, getChat, isTurnRunning, readSettingsRecord, runAsUser, turnFailure } from "@/src/server";
+import { compactionInFlight, getChat, isTurnRunning, readSettingsRecord, runAsUser, trialStatusFor, turnFailure } from "@/src/server";
 import { requirePageUser } from "../../../_lib/user";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export default async function ChatPage({
 	searchParams: Promise<{ prompt?: string }>;
 }) {
 	const [userId, { id }, { prompt }] = await Promise.all([requirePageUser(), params, searchParams]);
+	const trial = trialStatusFor(userId);
 	return runAsUser(userId, () => {
 		const chat = getChat(id);
 		if (!chat) notFound();
@@ -22,7 +24,9 @@ export default async function ChatPage({
 		// server's 503 stays the truth; this only decides whether the pill rides.
 		const record = readSettingsRecord();
 		return (
-			<Chat
+			<>
+				{trial.solOpen && trial.solChatId === id ? <TrialSolBar /> : null}
+				<Chat
 				key={chat.id}
 				chatId={chat.id}
 				title={chat.title}
@@ -33,12 +37,14 @@ export default async function ChatPage({
 				initialMessages={chat.messages}
 				initialError={turnFailure(chat.id)}
 				initialConfigured={slotsConfigured(record?.models)}
+				trialParticipant={trial.participant}
 				initialPrompt={prompt}
 				// A teacher turn that outlived its client: the remounted view must
 				// attach (busy shimmer + poll), never resurrect the stale record.
 				initiallyInFlight={isTurnRunning(chat.id)}
 				initiallyCompacting={compactionInFlight(chat.id)}
 			/>
+			</>
 		);
 	});
 }

@@ -111,7 +111,7 @@ export function NotesImportControl({ importing, onImportFiles }: { importing: bo
 			<input ref={filesRef} type="file" multiple accept=".md,.markdown,.txt,.pdf" className="hidden" onChange={onChange} />
 			<input ref={folderRef} type="file" {...{ webkitdirectory: "" }} className="hidden" onChange={onChange} />
 			<Hint label={t("graph.chrome.importHint")} side="bottom">
-				<button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" data-testid="import-notes"
+				<button type="button" id="tour-import" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="menu" data-testid="import-notes"
 					className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent">
 					<UploadIcon className="size-3" />{importing ? t("graph.chrome.importing") : t("graph.chrome.import")}
 				</button>

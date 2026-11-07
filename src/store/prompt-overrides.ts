@@ -28,7 +28,7 @@
  * layout is rejected (null / no-op), never written.
  */
 
-import fs from "node:fs";
+import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { promptsOverrideDir } from "../../config.ts";
 import { isValidSegmentPath } from "../core/prompt-segments.ts";
@@ -44,7 +44,7 @@ export const promptOverrides: PromptOverrideStore = {
 	listOverrides(): string[] {
 		const out: string[] = [];
 		const walk = (dir: string, prefix: string) => {
-			let entries: fs.Dirent[];
+			let entries: fs.StoredDirent[];
 			try {
 				entries = fs.readdirSync(dir, { withFileTypes: true });
 			} catch {

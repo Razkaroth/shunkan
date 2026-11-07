@@ -1,5 +1,5 @@
 import { NewSession } from "@/components/new-session";
-import { readSettingsRecord, runAsUser } from "@/src/server";
+import { readSettingsRecord, runAsUser, trialStatusFor } from "@/src/server";
 import { slotsConfigured } from "@/src/core";
 import { requirePageUser } from "../../../_lib/user";
 
@@ -23,5 +23,5 @@ export default async function NewSessionPage({
 }) {
 	const [userId, { mode }] = await Promise.all([requirePageUser(), searchParams]);
 	const configured = runAsUser(userId, () => slotsConfigured(readSettingsRecord()?.models));
-	return <NewSession initialConfigured={configured} mode={mode === "practice" ? "practice" : "teach"} />;
+	return <NewSession initialConfigured={configured} mode={mode === "practice" ? "practice" : "teach"} trialParticipant={trialStatusFor(userId).participant} />;
 }

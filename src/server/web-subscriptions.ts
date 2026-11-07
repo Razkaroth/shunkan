@@ -5,6 +5,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { AUTH_FILE } from "../../config.ts";
+import { chatgptDocumentStore, subscriptionDocumentStore } from "../persistence/credential-store.ts";
+import { usesDatabase } from "../persistence/data-file.ts";
 import { createChatGPT, fileStore, publicError } from "./subscription-native/chatgpt.cjs";
 import { createSubscriptions } from "./subscription-native/subscriptions.cjs";
 import { chatGPTControl } from "./subscription-native/chatgpt-ipc.cjs";
@@ -52,13 +54,15 @@ export function createWebSubscriptionOwner(options: {
 		if (!captured || new URL(target).protocol !== "https:") throw new Error("No browser action is pending.");
 		captured.push(target);
 	};
+	const database = usesDatabase();
 	const chatgpt = createChatGPT({
-		store: options.chatgptStore ?? fileStore(path.join(options.directory, "chatgpt-credentials.json")),
+		store: options.chatgptStore ?? (database ? chatgptDocumentStore() : fileStore(path.join(options.directory, "chatgpt-credentials.json"))),
 		openExternal,
 		onChange: (packet?: Packet) => { if (packet) notify("lh:chatgpt", packet); },
 	});
 	const native = createSubscriptions({
 		directory: options.directory, sdk: options.sdk, loadSDK, openExternal,
+		...(database ? { stores: { "github-copilot": subscriptionDocumentStore("github-copilot"), xai: subscriptionDocumentStore("xai") } } : {}),
 		onChange: (snapshot: NativeSubscriptionSnapshot) => notify("lh:subscriptions", { channel: "lh:subscriptions", op: "changed", snapshot }),
 	});
 	// Web only, never in the desktop IPC: desktop sign-in always returns to its own 127.0.0.1 listener.

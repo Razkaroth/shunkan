@@ -158,6 +158,11 @@ describe("strongKeyless — the pre-send guard's truth (owner interlude, no-orph
 		assert.equal(strongKeyless(lying), true);
 	});
 
+	it("a ready AI Gateway admits a saved pin that has no provider key, and still refuses a custom endpoint", () => {
+		assert.equal(strongKeyless(catalog("openai", "vercel-ai-gateway")), false);
+		assert.equal(strongKeyless(catalog("custom", "vercel-ai-gateway")), true);
+	});
+
 	it("no strong pin (the models guard owns that case) or catalog not loaded: false — the server gate remains the belt", () => {
 		assert.equal(strongKeyless(catalog(null, "openrouter")), false);
 		assert.equal(strongKeyless(undefined), false);
