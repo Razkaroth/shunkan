@@ -4,7 +4,7 @@
  * extraction run (extractor → auditor → merger) over its raw text. Run
  * from this worktree only — data never crosses trees:
  *
- *   npx tsx --env-file=.env.local scripts/import-notes.ts <dir> [concurrency]
+ *   pnpm exec tsx --env-file=.env.local scripts/import-notes.ts <dir> [concurrency]
  *
  * Default dir: real-data-extraction/learn-sessions (the prototype
  * learning-session exports — deliberately NOT imported as chats: they run

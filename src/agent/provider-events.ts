@@ -10,7 +10,7 @@
  * an inspectable artifact.
  *
  * Gating (owner choice, 2026-10-04): env var only —
- *   LH_PROVIDER_EVENTS=1 npm run dev
+ *   LH_PROVIDER_EVENTS=1 pnpm run dev
  * Default off: raw events carry full prompts (privacy) and unbounded
  * volume (disk). No app surface; a debugging feature, not a feature.
  *

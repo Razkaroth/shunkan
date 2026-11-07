@@ -87,7 +87,7 @@ describe("tailscale preview commands", () => {
 });
 
 describe("dev help", () => {
-	test("names start, serve, and the npm tasks without starting a server", async () => {
+	test("names start, serve, and the pnpm tasks without starting a server", async () => {
 		const serve = await runDev(["serve", "--help"]);
 		assert.equal(serve.code, 0);
 		assert.equal(serve.stderr, "");

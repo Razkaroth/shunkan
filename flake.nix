@@ -15,9 +15,9 @@
         };
         utils = import ./utils.nix { inherit pkgs; };
 
-        # Official Node 24.22.2 — npm 11.19.1 can clean-install this app's lock.
-        # nixpkgs nodejs_22 here is 22.22 / npm 10, which cannot. Payload asks
-        # for ^22.23.4 || >=24.22.1, and Node 22.23 still ships npm 10.
+        # Official Node 24.22.2. Payload asks for ^22.23.4 || >=24.22.1, and
+        # Node 22.23 still ships npm 10. pnpm 10.28.0 from this nixpkgs installs
+        # the lock.
         nodeVersion = "24.22.2";
         nodeSrcs = {
           "x86_64-linux" = {
@@ -71,6 +71,7 @@
         devShells.default = pkgs.mkShell {
           packages = [
             nodePinned
+            pkgs.pnpm
             pkgs.git
             pkgs.openssl
           ] ++ utils.devShellPackages;
@@ -81,13 +82,13 @@
             cat > .direnv/bin/pm2 <<'EOF'
 #!/usr/bin/env sh
 # Nix mkShell exports `name`; PM2 treats that as a process name. Unset it,
-# then exec the next `pm2` on PATH (npm -g, distro, …) — never this shim.
+# then exec the next `pm2` on PATH (pnpm -g, distro, …) — never this shim.
 self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vx "$self_dir" | paste -sd: -)
 export PATH
 pm2_bin=$(command -v pm2 || true)
 if [ -z "$pm2_bin" ] || [ "$pm2_bin" = "$self_dir/pm2" ]; then
-  printf 'pm2: no parent pm2 on PATH (install with: npm i -g pm2)\n' >&2
+  printf 'pm2: no parent pm2 on PATH (install with: pnpm add -g pm2)\n' >&2
   exit 127
 fi
 exec env -u name "$pm2_bin" "$@"
@@ -97,8 +98,8 @@ EOF
               *":$PWD/.direnv/bin:"*) ;;
               *) export PATH="$PWD/.direnv/bin:$PATH" ;;
             esac
-            if [ ! -d node_modules ] || [ package.json -nt node_modules ] || { [ -f package-lock.json ] && [ package-lock.json -nt node_modules ]; }; then
-              npm ci
+            if [ ! -d node_modules ] || [ package.json -nt node_modules ] || { [ -f pnpm-lock.yaml ] && [ pnpm-lock.yaml -nt node_modules ]; }; then
+              pnpm install
             fi
           '';
         };

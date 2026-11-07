@@ -33,7 +33,7 @@ core tool surface must appear in real data here.
 
 ## Regenerating / extending
 
-Run the app (`npm run dev`), exercise the feature against `data/`, then copy
+Run the app (`pnpm run dev`), exercise the feature against `data/`, then copy
 the produced record in verbatim. Do not hand-edit content; if a record needs
 pruning, re-run the flow instead.
 

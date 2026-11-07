@@ -6,7 +6,7 @@ module.exports = {
 	apps: [
 		{
 			name: "shunkan",
-			script: "npm",
+			script: "pnpm",
 			args: ["run", "dev", "--", "--port", port, "--hostname", "127.0.0.1"],
 			cwd: root,
 			interpreter: "none",

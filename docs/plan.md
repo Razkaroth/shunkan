@@ -12,7 +12,7 @@ Execution plan for `docs/vision.md`. Section references (§) point into that doc
 - **Workers (GLM 5.3) implement everything.** Each task brief carries: exact file ownership, contracts to code against, acceptance criteria, and the standing instruction — *when anything is undecided or ambiguous, ask the orchestrator (me) via your ask tool; never guess details.*
 - **Orchestrator (me) owns:** the shared contracts file (Wave 0 — everything depends on it; mistakes here poison all downstream work), all browser verification (only I have the browser tool), gate reviews, and escalations.
 - **Escalation to the user:** only when a genuinely new implementation/design decision appears that we haven't discussed, with meaningful, expensive-to-revert consequences. Otherwise I decide and note it.
-- **Parallelism by file ownership.** Workers in the same wave get disjoint file lists. Touching a file outside your list requires asking me first. Each worker leaves gates green: `npx tsc --noEmit`, `npm test`, `npm run build`. Small scoped commits; I review at gates.
+- **Parallelism by file ownership.** Workers in the same wave get disjoint file lists. Touching a file outside your list requires asking me first. Each worker leaves gates green: `pnpm exec tsc --noEmit`, `pnpm test`, `pnpm run build`. Small scoped commits; I review at gates.
 - **Prompt architecture:** the teacher system prompt becomes composed fragments (`src/agent/prompts/*.md`) so parallel workers add prompt sections without editing the same file.
 
 ## Wave 0 — contracts (me, before any worker spawns)

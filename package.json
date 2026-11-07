@@ -10,6 +10,7 @@
 	"description": "Hosted fork of LearnHarness: adaptive teaching, practice, and a persistent knowledge graph.",
 	"type": "module",
 	"private": true,
+	"packageManager": "pnpm@10.28.0",
 	"scripts": {
 		"dev": "next dev",
 		"build": "next build",
@@ -86,8 +87,10 @@
 		"use-stick-to-bottom": "^1.1.6",
 		"zod": "^4.4.3"
 	},
-	"overrides": {
-		"katex": "$katex"
+	"pnpm": {
+		"overrides": {
+			"katex": "$katex"
+		}
 	},
 	"devDependencies": {
 		"@next/eslint-plugin-next": "^16.4.3",

@@ -6,21 +6,21 @@ Start here for local work. The [architecture reference](architecture.md) describ
 
 ## Setup and commands
 
-Use a current Node.js/npm installation compatible with the lockfile and native dependencies. CI and release builds use **Node 26**. From the repository root:
+Use Node 24.22 or newer with pnpm 10.28, compatible with the lockfile and native dependencies. CI and release builds use **Node 26**. From the repository root:
 
 ```bash
-npm ci                 # install the locked dependencies
-npm run dev            # Next development server, normally http://localhost:3000
+pnpm install           # install the locked dependencies
+pnpm run dev           # Next development server, normally http://localhost:3000
 
-npm run build          # production Next build, including standalone output
-npm start              # serve the production build with Next
+pnpm run build         # production Next build, including standalone output
+pnpm start             # serve the production build with Next
 
-npm run desktop:dev    # Next dev + Electron pointed at localhost:3000
+pnpm run desktop:dev   # Next dev + Electron pointed at localhost:3000
 ```
 
 No API key is required just to start the UI. Model calls are provisioned through the Vercel AI SDK and [AI Gateway](https://vercel.com/docs/ai-gateway). Set `AI_GATEWAY_API_KEY` for local and non-Vercel hosts; a Vercel deployment can use OIDC instead. Choose strong, cheap, and vision slots from gateway model ids (`creator/model`). There are no factory model choices. Per-provider API keys, the custom OpenAI-compatible endpoint, and ChatGPT/Codex or other subscription logins do not authenticate these calls. Existing sessions keep their explicit conversation model; background roles use their own settings resolution.
 
-For local signed macOS packaging, `npm run desktop:dist` runs the build, runtime smoke/assembly checks and Electron Builder with the configured signing/notarization setup. It is not a portable unsigned-build shortcut. See [desktop release](desktop-release.md) for prerequisites, target-OS builds, Windows/Linux packages and release verification.
+For local signed macOS packaging, `pnpm run desktop:dist` runs the build, runtime smoke/assembly checks and Electron Builder with the configured signing/notarization setup. It is not a portable unsigned-build shortcut. See [desktop release](desktop-release.md) for prerequisites, target-OS builds, Windows/Linux packages and release verification.
 
 ## Configuration and credentials
 
@@ -55,7 +55,7 @@ Provider-specific references:
 
 ### Subscription connections in web/dev
 
-Ordinary `npm run dev` and `npm start` support ChatGPT, GitHub Copilot and Grok in Settings → Providers. `npm run desktop:dev` uses those same dev-server connections; packaged desktop uses its separate main-process credential owner and private transport. Subscription routes do not silently fall back to API-key billing.
+Ordinary `pnpm run dev` and `pnpm start` support ChatGPT, GitHub Copilot and Grok in Settings → Providers. `pnpm run desktop:dev` uses those same dev-server connections; packaged desktop uses its separate main-process credential owner and private transport. Subscription routes do not silently fall back to API-key billing.
 
 Web/dev stores `chatgpt-credentials.json`, `github-copilot-credentials.json` and `xai-credentials.json` **beside the configured `auth.json`**: in the project directory by default, or the directory containing `LH_AUTH_FILE`. They are not under `data/`, packaged Application Support or a global Pi profile. Git/build exclusions cover the credential files and their atomic-write temporary files. Use only one server process per credential directory; refresh serialization is process-local.
 
@@ -117,7 +117,7 @@ For an isolated reproduction, create a disposable data directory and a separate 
 ```bash
 LH_DATA_DIR=/absolute/path/to/scratch/data \
 LH_AUTH_FILE=/absolute/path/to/scratch/auth.json \
-npm run dev -- --port 3001
+pnpm run dev -- --port 3001
 ```
 
 Those two variables isolate app records and saved API keys, **not every external effect**. Ambient provider environment variables still win; subscription files follow the auth directory; Claude Code can use its native CLI authentication/profile. Learner file tools are read-only but resolve relative/default paths against the server user's home and can read outside the app data directory. An isolated data root is not a filesystem or credential sandbox. Use fake providers/fixtures for automated reproduction and avoid ambient credentials or personal files.
@@ -129,7 +129,7 @@ Normal development does not require importing/backfilling a personal corpus. Mai
 For background-worker behavioral inspection, use `LH_BACKGROUND_CAPTURE=auditor`, a comma-separated role list such as `auditor,extractor`, or `all`. This covers the shared worker runner (`researcher`, `demoBuilder`, `extractor`, `auditor`) and the separate image-in-the-loop workers (`visualMaker`, `pdfReader`), not foreground teaching/probing. For example:
 
 ```bash
-LH_BACKGROUND_CAPTURE=auditor npm run desktop:dev
+LH_BACKGROUND_CAPTURE=auditor pnpm run desktop:dev
 ```
 
 The flag must reach the **Next server** process; `desktop:dev` starts both Next and Electron with it. Restart an existing server to change the flag. Captures are off by default and written locally to `<data root>/debug/background-captures/<role>-<run ID>.json`, one file per worker run. Each model turn replaces the previous request body and reply; the final file retains the last request, its final assistant response/error, and its tool results. Earlier tool calls/results and returned thinking remain in the conversation replayed by that last request. Compact per-turn timings remain without duplicated request bodies.
@@ -144,15 +144,15 @@ English is the source of truth; anything untranslated falls back to it.
 2. **UI copy** — copy `src/core/i18n/es/` to `src/core/i18n/<id>/` (one file per surface, typed against the English keys) and add it to `DICTIONARIES`.
 3. **Teacher prompts** — mirror `src/agent/prompts/` under `src/agent/prompts/locales/<id>/` (plus `system-prompt.md`). Translate prose only: tool names, backticked identifiers and markers stay verbatim.
 4. **Worker prompts** — add `src/agent/subagents/locales/<id>.ts` and register it in `worker-prompts.ts`; add an `<id>` entry to the `Localized` maps (compaction prompts in `src/core/compaction.ts` and `src/server/compaction.ts`).
-5. **Run `npm test`** — the dictionary and prompt-coverage tests list anything missing or any identifier lost in translation.
+5. **Run `pnpm test`** — the dictionary and prompt-coverage tests list anything missing or any identifier lost in translation.
 
 ## Checks
 
 ```bash
-npm test               # node:test via tsx: injected engines, fixtures and fake transports; throwaway data dir
-npm run typecheck      # tsc --noEmit
-npm run lint           # ESLint, including import restrictions
-npm run build          # Next production build
+pnpm test              # node:test via tsx: injected engines, fixtures and fake transports; throwaway data dir
+pnpm run typecheck     # tsc --noEmit
+pnpm run lint          # ESLint, including import restrictions
+pnpm run build         # Next production build
 ```
 
 The suite does not require paid models or real account sign-in. Tests cover pure domain logic, native turn/session flows, delivery recovery, extraction/import, conversational practice, provider fixtures, rendering and stored-data compatibility. Some tests use filesystem/native-process or local fake-endpoint seams; “offline” is not a promise that every test is a pure function. Review a focused suite's setup before running it alongside a live app.

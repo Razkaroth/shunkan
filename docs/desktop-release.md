@@ -22,13 +22,13 @@ Icons are per-platform (2026-10-13): macOS compiles the Icon Composer document `
 
 CI uses Node 26. Each OS installs its own dependencies and builds its own Next standalone tree:
 
-1. `npm ci`
+1. `pnpm install --frozen-lockfile`
 2. Native PDF/SVG renderer and browser-service tests for that OS, running in Electron's bundled Node (no display needed).
-3. `npm run build` (`output: "standalone"`).
+3. `pnpm run build` (`output: "standalone"`).
 4. `node scripts/smoke-provider-runtime.mjs` — check the fresh trace before curation: offline evaluation of all ten native Pi chat implementations, lazy Google/Bedrock initialization, and public GitHub Copilot/xAI OAuth-to-auth paths. Payload hooks stop before generation; this is not a live provider/login check.
 5. `node scripts/build-server.mjs` — copy static assets, refuse leaked learning data and credential files, remove only standalone-root `dist/` and `node_modules/electron/` (old installers and the development runtime), and check prompt assets.
 6. `node scripts/smoke-server.mjs --electron` — exercise demo dependencies, offline provider initialization, and gzip backpressure in Electron's bundled Node; boot the standalone server using throwaway data/auth and check `/`, `/api/graph`, `/api/models`, and `/api/settings`.
-7. `npx electron-builder <platform flags> --publish <policy>` — package for the current OS using the local/rehearsal or tag-release policy below.
+7. `pnpm exec electron-builder <platform flags> --publish <policy>` — package for the current OS using the local/rehearsal or tag-release policy below.
 
 The shell/updater live in `app.asar`; the standalone server and native renderer binaries ship unpacked as `extraResources`. **Do not cross-build the server payload.** Next traces the build machine's native binaries, so a macOS-built standalone tree is not a Windows/Linux payload.
 
@@ -42,16 +42,16 @@ Image resizing uses the shipped Photon 0.3.4 JS/WASM engine and unbundled worker
 
 ### Local packaging
 
-`npm run desktop:dist` is the local macOS signing path, using the `LH_NOTARY` keychain profile. It clears local `dist` and `.next/standalone`, builds, checks the fresh provider trace, curates the payload, runs the server smoke under host Node, then packages. Unlike CI's `--electron` smoke, that script does not itself check Electron's Node runtime or run the post-package probes. It has no publish flag and is not the tag-upload workflow.
+`pnpm run desktop:dist` is the local macOS signing path, using the `LH_NOTARY` keychain profile. It clears local `dist` and `.next/standalone`, builds, checks the fresh provider trace, curates the payload, runs the server smoke under host Node, then packages. Unlike CI's `--electron` smoke, that script does not itself check Electron's Node runtime or run the post-package probes. It has no publish flag and is not the tag-upload workflow.
 
 For a local Windows/Linux build, run steps 1–6 above, then:
 
 ```sh
 # On Windows:
-npx electron-builder --win --x64 --publish never
+pnpm exec electron-builder --win --x64 --publish never
 
 # On Linux:
-npx electron-builder --linux --x64 --publish never
+pnpm exec electron-builder --linux --x64 --publish never
 ```
 
 ## Linux server mode
