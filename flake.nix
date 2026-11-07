@@ -14,15 +14,63 @@
           inherit system;
         };
         utils = import ./utils.nix { inherit pkgs; };
+
+        # Official Node 24.22.2 — npm 11.19.1 can clean-install this app's lock.
+        # nixpkgs nodejs_22 here is 22.22 / npm 10, which cannot. Payload asks
+        # for ^22.23.4 || >=24.22.1, and Node 22.23 still ships npm 10.
+        nodeVersion = "24.22.2";
+        nodeSrcs = {
+          "x86_64-linux" = {
+            url = "https://nodejs.org/dist/v${nodeVersion}/node-v${nodeVersion}-linux-x64.tar.xz";
+            hash = "sha256-SMwOIeBIeQ5UwM9XScJyUAUxPWUmUcQLeiH+uWl6r3U=";
+          };
+          "aarch64-linux" = {
+            url = "https://nodejs.org/dist/v${nodeVersion}/node-v${nodeVersion}-linux-arm64.tar.xz";
+            hash = "sha256-6xh4N6IjDUBHFhrAvgCFhOFrRvcm6clJDuNdxrF9m6g=";
+          };
+          "x86_64-darwin" = {
+            url = "https://nodejs.org/dist/v${nodeVersion}/node-v${nodeVersion}-darwin-x64.tar.gz";
+            hash = "sha256-1eM21YjEW+DDfb1SzCmJVZMAnKSZeneh/QKBUTHtDlI=";
+          };
+          "aarch64-darwin" = {
+            url = "https://nodejs.org/dist/v${nodeVersion}/node-v${nodeVersion}-darwin-arm64.tar.gz";
+            hash = "sha256-qpVJNJ5H3/qkLc+V1uBq3oxL2vyYCXmIO4h2dnDfOFo=";
+          };
+        };
+        nodeSrc = nodeSrcs.${system} or (throw "pinned node ${nodeVersion} has no binary for ${system}");
+        nodePinned = pkgs.stdenv.mkDerivation {
+          pname = "nodejs";
+          version = nodeVersion;
+          src = pkgs.fetchurl {
+            inherit (nodeSrc) url hash;
+          };
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            pkgs.autoPatchelfHook
+          ];
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+            pkgs.stdenv.cc.cc.lib
+          ];
+          dontConfigure = true;
+          dontBuild = true;
+          dontStrip = true;
+          installPhase = ''
+            runHook preInstall
+            mkdir -p $out
+            cp -a . $out
+            runHook postInstall
+          '';
+        };
       in
       {
         apps = utils.apps;
 
-        packages = utils.packages;
+        packages = utils.packages // {
+          nodejs = nodePinned;
+        };
 
         devShells.default = pkgs.mkShell {
           packages = [
-            pkgs.nodejs_22
+            nodePinned
             pkgs.git
             pkgs.openssl
           ] ++ utils.devShellPackages;
@@ -49,6 +97,9 @@ EOF
               *":$PWD/.direnv/bin:"*) ;;
               *) export PATH="$PWD/.direnv/bin:$PATH" ;;
             esac
+            if [ ! -d node_modules ] || [ package.json -nt node_modules ] || { [ -f package-lock.json ] && [ package-lock.json -nt node_modules ]; }; then
+              npm ci
+            fi
           '';
         };
       });
