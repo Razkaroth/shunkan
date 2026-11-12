@@ -36,7 +36,7 @@ Secrets and machine-specific paths may be supplied through the process environme
 | `STRIPE_RESTRICTED_ACCESS_KEY` | Optional restricted key (`rk_…`) with Billing meter events write. Treat it as a secret: keep it out of logs, commits, and shared channels. Sent on gateway requests so AI Gateway can emit `token-billing-tokens` events. Not used to create charges. |
 | `STRIPE_BILLING_RESTRICTED_KEY` | Optional restricted key for Checkout, customers, subscriptions, credit grants, and credit-balance reads. Separate from the meter-write key. When it is set, a profile with a Stripe customer is gated: monthly allotment, then recharge, then pay as you go only if that flag is on. |
 | `STRIPE_WEBHOOK_SECRET` | Signing secret for `POST /api/billing/webhook`. |
-| `STRIPE_BASIC_PRICE_ID` | Licensed recurring price of 150 MXN per month. |
+| `STRIPE_BASIC_PRICE_ID` | Stripe Price id for the licensed Basic subscription. The monthly amount is the `pricing` global, not this variable. |
 | `STRIPE_TOKEN_PRICE_ID` | Metered price, currency MXN, on the existing meter `token-billing-tokens`. Credit grants apply only to this price. |
 | Profile `stripeCustomerId` | Optional `cus_…` on a profile. Checkout stores it when the payment succeeds. Sent as `stripe-customer-id` for that profile's model calls. Both Stripe headers must be present or the gateway does not meter the request. |
 | `TAVILY_API_KEY` / `BRAVE_API_KEY` | Optional search adapters. Research remains available without a search key and can fetch known URLs. |
@@ -75,7 +75,7 @@ Profiles are **local profiles, not accounts**. A profile's PIN only stops someon
 
 ### Pricing
 
-Basic is a licensed subscription of 150 MXN per month (`STRIPE_BASIC_PRICE_ID`). Half of that payment, 75 MXN, is a Billing Credit Grant created from `invoice.paid` (`subscription_create` and `subscription_cycle`). The grant applies only to `STRIPE_TOKEN_PRICE_ID`, the metered price on the existing meter `token-billing-tokens`, and it expires at the end of the period. The other 75 MXN is the licensed charge, which the grant cannot reduce. That is the revenue.
+Basic is a licensed subscription (`STRIPE_BASIC_PRICE_ID`). The monthly price in MXN and the commission percentage are the Payload global `pricing`, fields `monthlyPriceMxn` and `commissionPercent`. An admin sets them in the private admin. The monthly token grant is that price times that percentage, created from `invoice.paid` (`subscription_create` and `subscription_cycle`). The grant applies only to `STRIPE_TOKEN_PRICE_ID`, the metered price on the existing meter `token-billing-tokens`, and it expires at the end of the period. The rest of the price is revenue: the grant cannot reduce the licensed charge. If either field is unset, the app does not invent a price or a grant. Plan checkout waits, and a Basic invoice webhook answers 503 so Stripe retries after an admin sets the global.
 
 Recharge is a one-time Checkout payment. The full amount becomes a credit grant with no expiry and a lower Stripe priority, so it is spent after the monthly grant. Settings → Billing starts both checkouts. `POST /api/billing/webhook` must receive `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `invoice.paid`.
 
@@ -84,8 +84,8 @@ Before a metered model call, the server reads the Payload global `feature-flags`
 Dashboard setup that this repo cannot create for you:
 
 1. Keep the meter event name `token-billing-tokens` with dimensions `model` and `token_type`. Do not create a second meter.
-2. Create a licensed recurring price of 150.00 MXN per month and set `STRIPE_BASIC_PRICE_ID`.
-3. Create a metered price in MXN on that same meter and set `STRIPE_TOKEN_PRICE_ID`. Its unit amount is the MXN value of one token; the 75 MXN allotment buys however many tokens that price allows.
+2. Create a licensed recurring price in MXN per month for the same amount as `monthlyPriceMxn`, and set `STRIPE_BASIC_PRICE_ID`.
+3. Create a metered price in MXN on that same meter and set `STRIPE_TOKEN_PRICE_ID`. Its unit amount is the MXN value of one token. The monthly grant, the price times the commission percentage, buys however many tokens that price allows.
 4. Create a restricted key that can write customers, Checkout Sessions, subscriptions, subscription items, credit grants, and invoices, and can read credit balance summaries. Set it as `STRIPE_BILLING_RESTRICTED_KEY`. Leave `STRIPE_RESTRICTED_ACCESS_KEY` as the meter-events-only key the gateway sends.
 5. Add the webhook endpoint `https://<host>/api/billing/webhook` for the three events above and set `STRIPE_WEBHOOK_SECRET`.
 

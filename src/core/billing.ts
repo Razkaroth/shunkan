@@ -4,21 +4,15 @@
  * Billing Credit Grants pay the metered price. Nothing here stores a
  * balance or a debt.
  *
- * The Basic plan charges 150 MXN a month. Half of that charge is granted
- * back as metered credit (the monthly allotment). The other half is the
- * licensed price with no credit against it, which is the revenue. Recharge
- * grants the full amount paid, with no expiry, and is applied only after
- * the monthly grant. Pay as you go is the third step, and only when the
- * feature flag says so.
+ * The Basic plan's monthly price and commission percentage are the
+ * Payload global `pricing`. The monthly token grant is that price times
+ * that percentage. The rest of the price is revenue. Recharge grants the
+ * full amount paid, with no expiry, and is applied only after the monthly
+ * grant. Pay as you go is the third step, and only when the feature flag
+ * says so. An unset price or commission is not a price and not a grant.
  */
 
 export const BILLING_CURRENCY = "mxn" as const;
-
-/** Licensed recurring price. The Stripe Price is created in the dashboard. */
-export const BASIC_PLAN_CENTAVOS = 15_000;
-
-/** Half of the Basic payment. The other half is never granted. */
-export const MONTHLY_ALLOTMENT_CENTAVOS = BASIC_PLAN_CENTAVOS / 2;
 
 /**
  * Stripe applies the lowest priority number first. Monthly credit is 0 so
@@ -31,7 +25,7 @@ export const RECHARGE_GRANT_PRIORITY = 100;
  * The usage invoice is finalized at period end. One hour lets that invoice
  * still see the grant. The next period's usage is invoiced a month later,
  * so the grace does not roll the allotment forward. The licensed fee is
- * not a metered price, so the grace cannot pay the revenue half.
+ * not a metered price, so the grace cannot pay the revenue portion.
  */
 export const MONTHLY_GRANT_GRACE_SECONDS = 60 * 60;
 
@@ -135,6 +129,49 @@ export function payAsYouGoFromFlags(flags: { payAsYouGo?: boolean | null } | nul
 	return flags?.payAsYouGo === true;
 }
 
+export interface PlanTerms {
+	/** Whole centavos of the licensed monthly price. */
+	monthlyPriceCentavos: number;
+	/** Commission share from 0 through 100. The grant is this percent of the price. */
+	commissionPercent: number;
+}
+
+/** Whole centavos, or null when the peso amount is not a positive price. */
+function pesosToCentavos(mxn: number): number | null {
+	if (!Number.isFinite(mxn) || mxn <= 0) return null;
+	const centavos = Math.round(mxn * 100);
+	if (!Number.isSafeInteger(centavos) || centavos < 1) return null;
+	if (Math.abs(mxn * 100 - centavos) > 1e-6) return null;
+	return centavos;
+}
+
+/**
+ * Both numbers have to be present. A missing field, a non-positive price,
+ * or a percentage outside 0–100 is unset. This does not fill in a price.
+ */
+export function planTermsFromPricing(doc: {
+	monthlyPriceMxn?: number | null;
+	commissionPercent?: number | null;
+} | null | undefined): PlanTerms | null {
+	if (!doc) return null;
+	const price = doc.monthlyPriceMxn;
+	const percent = doc.commissionPercent;
+	if (typeof price !== "number" || typeof percent !== "number") return null;
+	if (!Number.isFinite(percent) || percent < 0 || percent > 100) return null;
+	const monthlyPriceCentavos = pesosToCentavos(price);
+	if (monthlyPriceCentavos === null) return null;
+	return { monthlyPriceCentavos, commissionPercent: percent };
+}
+
+/** Centavos granted as monthly tokens: the price times the commission percentage. */
+export function monthlyAllotmentCentavos(terms: PlanTerms): number {
+	const raw = (terms.monthlyPriceCentavos * terms.commissionPercent) / 100;
+	if (!Number.isFinite(raw) || raw <= 0) return 0;
+	const centavos = Math.round(raw);
+	if (!Number.isSafeInteger(centavos) || centavos < 1) return 0;
+	return centavos;
+}
+
 export function invoiceLinePriceId(line: {
 	pricing?: { price_details?: { price?: string | { id?: string } | null } | null } | null;
 }): string | null {
@@ -173,12 +210,18 @@ export interface MonthlyGrantSpec {
 	category: "paid";
 }
 
+export type MonthlyGrantDecision =
+	| { action: "ignore" }
+	| { action: "wait" }
+	| { action: "grant"; spec: MonthlyGrantSpec };
+
 /**
- * Half of a paid Basic invoice, scoped later to the token price only.
- * Usage invoices that do not contain the Basic price grant nothing, so a
- * recharge subscription cannot mint a monthly allotment.
+ * Commission share of a paid Basic invoice, scoped later to the token price
+ * only. Usage invoices that do not contain the Basic price grant nothing,
+ * so a recharge subscription cannot mint a monthly allotment. A qualifying
+ * invoice with no plan terms waits: this does not invent a grant.
  */
-export function monthlyGrantForInvoice(invoice: {
+export function resolveMonthlyGrant(invoice: {
 	id: string;
 	currency: string | null;
 	billingReason: string | null;
@@ -186,27 +229,33 @@ export function monthlyGrantForInvoice(invoice: {
 	hasBasicPrice: boolean;
 	periodStart: number | null;
 	periodEnd: number | null;
-}): MonthlyGrantSpec | null {
-	if (!invoice.hasBasicPrice) return null;
-	if (invoice.currency !== BILLING_CURRENCY) return null;
-	if (invoice.billingReason !== "subscription_create" && invoice.billingReason !== "subscription_cycle") return null;
-	if (!invoice.id || invoice.periodEnd === null) return null;
-	if (invoice.amountPaidCentavos < BASIC_PLAN_CENTAVOS) return null;
+}, terms: PlanTerms | null): MonthlyGrantDecision {
+	if (!invoice.hasBasicPrice) return { action: "ignore" };
+	if (invoice.currency !== BILLING_CURRENCY) return { action: "ignore" };
+	if (invoice.billingReason !== "subscription_create" && invoice.billingReason !== "subscription_cycle") return { action: "ignore" };
+	if (!invoice.id || invoice.periodEnd === null) return { action: "ignore" };
+	if (!terms) return { action: "wait" };
+	if (invoice.amountPaidCentavos < terms.monthlyPriceCentavos) return { action: "ignore" };
+	const allotment = monthlyAllotmentCentavos(terms);
+	if (allotment <= 0) return { action: "ignore" };
 	return {
-		amountCentavos: MONTHLY_ALLOTMENT_CENTAVOS,
-		currency: BILLING_CURRENCY,
-		priority: MONTHLY_GRANT_PRIORITY,
-		expiresAt: invoice.periodEnd + MONTHLY_GRANT_GRACE_SECONDS,
-		effectiveAt: invoice.periodStart,
-		idempotencyKey: `shunkan_monthly_${invoice.id}`,
-		metadata: {
-			shunkan_kind: MONTHLY_GRANT_KIND,
-			invoice: invoice.id,
-			basic_centavos: String(BASIC_PLAN_CENTAVOS),
-			allotment_centavos: String(MONTHLY_ALLOTMENT_CENTAVOS),
+		action: "grant",
+		spec: {
+			amountCentavos: allotment,
+			currency: BILLING_CURRENCY,
+			priority: MONTHLY_GRANT_PRIORITY,
+			expiresAt: invoice.periodEnd + MONTHLY_GRANT_GRACE_SECONDS,
+			effectiveAt: invoice.periodStart,
+			idempotencyKey: `shunkan_monthly_${invoice.id}`,
+			metadata: {
+				shunkan_kind: MONTHLY_GRANT_KIND,
+				invoice: invoice.id,
+				basic_centavos: String(terms.monthlyPriceCentavos),
+				allotment_centavos: String(allotment),
+			},
+			name: "Monthly token allotment",
+			category: "paid",
 		},
-		name: "Monthly token allotment",
-		category: "paid",
 	};
 }
 

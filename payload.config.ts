@@ -8,6 +8,7 @@ import { betterAuthPlugin } from "payload-auth/better-auth";
 import { DemoFiles } from "./collections/DemoFiles.ts";
 import { LearnerRecords } from "./collections/LearnerRecords.ts";
 import { FeatureFlags } from "./globals/FeatureFlags.ts";
+import { Pricing } from "./globals/Pricing.ts";
 import { payloadAuthOptions } from "./lib/auth/options.ts";
 import { readEnv } from "./lib/env.ts";
 
@@ -24,7 +25,7 @@ export default buildConfig({
 		api: "/api/payload",
 	},
 	collections: [DemoFiles, LearnerRecords],
-	globals: [FeatureFlags],
+	globals: [FeatureFlags, Pricing],
 	editor: lexicalEditor(),
 	secret: env.PAYLOAD_SECRET,
 	typescript: {

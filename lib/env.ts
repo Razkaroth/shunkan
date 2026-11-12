@@ -30,7 +30,7 @@ const schema = z.object({
 	STRIPE_BILLING_RESTRICTED_KEY: z.string().min(1).optional(),
 	/** Signing secret for /api/billing/webhook. */
 	STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
-	/** Licensed recurring price: 150 MXN per month. */
+	/** Stripe Price id for the licensed Basic subscription. The peso amount is the pricing global. */
 	STRIPE_BASIC_PRICE_ID: z.string().min(1).optional(),
 	/** Metered price on the existing meter `token-billing-tokens`, currency MXN. */
 	STRIPE_TOKEN_PRICE_ID: z.string().min(1).optional(),

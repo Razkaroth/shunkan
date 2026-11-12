@@ -7,21 +7,22 @@
 import Stripe from "stripe";
 import { readEnv } from "../../lib/env.ts";
 import {
-	BASIC_PLAN_CENTAVOS,
 	BILLING_CURRENCY,
 	type CreditPools,
 	type GrantSnapshot,
 	invoiceLinePriceId,
 	meteredUsageCentavos,
 	MONTHLY_GRANT_KIND,
-	monthlyGrantForInvoice,
+	monthlyAllotmentCentavos,
 	poolsFromGrants,
 	RECHARGE_GRANT_KIND,
 	rechargeCentavosFromMxn,
 	rechargeGrantForPayment,
+	resolveMonthlyGrant,
 } from "../core/billing.ts";
 import { isStripeCustomerId, type Profile } from "../core/users.ts";
 import { readProfiles, writeProfiles } from "../store/users.ts";
+import { readPlanTerms } from "./plan-terms.ts";
 import { requestProfile, UsersError } from "./users.ts";
 
 const BASIC_INTEGRATION = "shunkan-basic-xkqmplrd";
@@ -103,6 +104,7 @@ function appOrigin(): string {
 export async function startBasicCheckout(req: Request): Promise<{ url: string }> {
 	const profile = requireProfile(req);
 	const { stripe, prices } = billingRuntime();
+	if (await readPlanTerms() === null) throw new BillingError(503, "The monthly price is not set.");
 	const customer = await customerForProfile(stripe, profile);
 	const origin = appOrigin();
 	const session = await stripe.checkout.sessions.create({
@@ -154,8 +156,10 @@ export async function startRechargeCheckout(req: Request, amountMxn: unknown): P
 export interface BillingStatus {
 	configured: boolean;
 	currency: typeof BILLING_CURRENCY;
-	basicPlanCentavos: number;
-	monthlyAllotmentCentavos: number;
+	/** Null until an admin sets both pricing fields. */
+	basicPlanCentavos: number | null;
+	/** Null until an admin sets both pricing fields. Zero is a configured commission of zero. */
+	monthlyAllotmentCentavos: number | null;
 	payAsYouGo: boolean;
 	hasCustomer: boolean;
 	monthlyCentavos: number;
@@ -164,11 +168,12 @@ export interface BillingStatus {
 
 export async function billingStatus(req: Request, payAsYouGo: boolean): Promise<BillingStatus> {
 	const profile = requireProfile(req);
+	const terms = await readPlanTerms();
 	const base: BillingStatus = {
 		configured: billingPrices() !== null && Boolean(process.env.STRIPE_BILLING_RESTRICTED_KEY?.trim()),
 		currency: BILLING_CURRENCY,
-		basicPlanCentavos: BASIC_PLAN_CENTAVOS,
-		monthlyAllotmentCentavos: BASIC_PLAN_CENTAVOS / 2,
+		basicPlanCentavos: terms?.monthlyPriceCentavos ?? null,
+		monthlyAllotmentCentavos: terms === null ? null : monthlyAllotmentCentavos(terms),
 		payAsYouGo,
 		hasCustomer: Boolean(profile.stripeCustomerId),
 		monthlyCentavos: 0,
@@ -221,7 +226,7 @@ async function grantMonthlyAllotment(invoice: Stripe.Invoice): Promise<void> {
 	const basic = lines
 		.map((line) => ({ priceId: invoiceLinePriceId(line), periodStart: line.period.start, periodEnd: line.period.end }))
 		.find((line) => line.priceId === prices.basicPriceId);
-	const spec = monthlyGrantForInvoice({
+	const decision = resolveMonthlyGrant({
 		id: invoice.id ?? "",
 		currency: invoice.currency,
 		billingReason: invoice.billing_reason,
@@ -229,11 +234,13 @@ async function grantMonthlyAllotment(invoice: Stripe.Invoice): Promise<void> {
 		hasBasicPrice: basic !== undefined,
 		periodStart: basic?.periodStart ?? null,
 		periodEnd: basic?.periodEnd ?? null,
-	});
+	}, await readPlanTerms());
 	const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
 	const profileId = invoice.parent?.subscription_details?.metadata?.profileId ?? invoice.metadata?.profileId ?? null;
 	if (customerId && profileId) bindProfileStripeCustomer(profileId, customerId);
-	if (!spec || !customerId) return;
+	if (decision.action === "wait") throw new BillingError(503, "The monthly price is not set.");
+	if (decision.action !== "grant" || !customerId) return;
+	const spec = decision.spec;
 	if (await grantAlreadyIssued(stripe, customerId, "invoice", spec.metadata.invoice)) return;
 	await stripe.billing.creditGrants.create({
 		customer: customerId,

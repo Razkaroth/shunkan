@@ -1,7 +1,8 @@
 "use client";
 /**
  * Basic plan and recharge. Checkout is Stripe; balances are read from
- * Stripe. The pay-as-you-go flag is not edited here.
+ * Stripe. The plan price and monthly grant come from billing status,
+ * which reads the pricing global. The pay-as-you-go flag is not edited here.
  */
 import { useEffect, useState } from "react";
 import { useT } from "@/components/i18n";
@@ -10,6 +11,8 @@ import { SettingsRow } from "./controls.tsx";
 interface BillingStatus {
 	configured: boolean;
 	payAsYouGo: boolean;
+	basicPlanCentavos: number | null;
+	monthlyAllotmentCentavos: number | null;
 	monthlyCentavos: number;
 	rechargeCentavos: number;
 }
@@ -25,7 +28,7 @@ function mxn(centavos: number): string {
 export function BillingSection() {
 	const t = useT();
 	const [status, setStatus] = useState<BillingStatus | null>(null);
-	const [amount, setAmount] = useState("150");
+	const [amount, setAmount] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [pending, setPending] = useState(false);
 
@@ -86,14 +89,18 @@ export function BillingSection() {
 			)}
 			{status?.configured && (
 				<>
-					<SettingsRow label={t("settings.billing.plan")} hint={t("settings.billing.split")}>
-						<span className="flex items-center gap-2">
-							<span className="font-ui text-xs">{t("settings.billing.planPrice")}</span>
-							<button type="button" className={ACTION} disabled={pending} data-testid="billing-subscribe" onClick={() => void openCheckout("/api/billing/subscribe")}>
-								{pending ? t("settings.billing.working") : t("settings.billing.subscribe")}
-							</button>
-						</span>
-					</SettingsRow>
+					{status.basicPlanCentavos != null && status.monthlyAllotmentCentavos != null ? (
+						<SettingsRow label={t("settings.billing.plan")} hint={t("settings.billing.split", { allotment: mxn(status.monthlyAllotmentCentavos) })}>
+							<span className="flex items-center gap-2">
+								<span className="font-ui text-xs">{t("settings.billing.planPrice", { price: mxn(status.basicPlanCentavos) })}</span>
+								<button type="button" className={ACTION} disabled={pending} data-testid="billing-subscribe" onClick={() => void openCheckout("/api/billing/subscribe")}>
+									{pending ? t("settings.billing.working") : t("settings.billing.subscribe")}
+								</button>
+							</span>
+						</SettingsRow>
+					) : (
+						<p className="text-xs text-muted-foreground">{t("settings.billing.planUnset")}</p>
+					)}
 					<SettingsRow label={t("settings.billing.monthly")}>
 						<span className="font-ui text-xs" data-testid="billing-monthly">{mxn(status.monthlyCentavos)}</span>
 					</SettingsRow>

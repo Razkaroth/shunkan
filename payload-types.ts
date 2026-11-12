@@ -104,9 +104,11 @@ export interface Config {
   fallbackLocale: null;
   globals: {
     'feature-flags': FeatureFlag;
+    pricing: Pricing;
   };
   globalsSelect: {
     'feature-flags': FeatureFlagsSelect<false> | FeatureFlagsSelect<true>;
+    pricing: PricingSelect<false> | PricingSelect<true>;
   };
   locale: null;
   widgets: {
@@ -617,6 +619,24 @@ export interface FeatureFlag {
 }
 export interface FeatureFlagsSelect<T extends boolean = true> {
   payAsYouGo?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * Monthly price and commission. Each is its own number on the `pricing`
+ * global. Unset fields are not a price and not a grant.
+ */
+export interface Pricing {
+  id: string;
+  monthlyPriceMxn?: number | null;
+  commissionPercent?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+export interface PricingSelect<T extends boolean = true> {
+  monthlyPriceMxn?: T;
+  commissionPercent?: T;
   updatedAt?: T;
   createdAt?: T;
   globalType?: T;
