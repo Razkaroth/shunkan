@@ -53,6 +53,7 @@ import type { ModelsSettings } from "@/src/core";
 import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
+import { BillingSection } from "./billing-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { usePhoneLayout } from "@/components/phone-layout-context";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,7 @@ const SECTIONS = [
 	{ id: "graph", label: "settings.section.graph" },
 	{ id: "keyboard", label: "settings.section.keyboard" },
 	{ id: "users", label: "settings.section.users" },
+	{ id: "billing", label: "settings.section.billing" },
 	{ id: "general", label: "settings.section.general" },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -395,6 +397,11 @@ export function SettingsDialogBody({
 											notifySettingsSaved("general");
 										}}
 									/>
+								</SettingsSection>
+							)}
+							{active === "billing" && (
+								<SettingsSection title={t("settings.section.billing")} testid="section-billing">
+									<BillingSection />
 								</SettingsSection>
 							)}
 							{active === "keys" && (

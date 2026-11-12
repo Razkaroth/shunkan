@@ -10,7 +10,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), "lh-gateway-"));
 process.env.LH_DATA_DIR = root;
 
 const { runAsUser, activeUserId } = await import("../config.ts");
-const { configureGatewayCustomer, gatewayCustomerId, gatewayModelId } = await import("../src/agent/gateway-provision.ts");
+const { configureGatewayCustomer, configureSpendGuard, gatewayCustomerId, gatewayModelId } = await import("../src/agent/gateway-provision.ts");
 const { piEngineForSpec, piModels } = await import("../src/agent/models.ts");
 const { isStripeCustomerId } = await import("../src/core/users.ts");
 await import("../src/server/gateway-customer.ts");
@@ -98,6 +98,30 @@ describe("AI Gateway provisioning", { concurrency: false }, () => {
 		assert.equal(body.includes("sk-must-not-be-sent"), false);
 		if (model.reasoning) assert.match(body, /"reasoning":"none"/);
 		else assert.equal(body.includes('"reasoning"'), false);
+	});
+
+	test("a blocked credit decision does not call the gateway", async () => {
+		const { SpendBlockedError } = await import("../src/core/billing.ts");
+		let called = false;
+		globalThis.fetch = async () => {
+			called = true;
+			return new Response("no");
+		};
+		configureSpendGuard(async () => {
+			throw new SpendBlockedError();
+		});
+		try {
+			const model = piModels().getModels("openai")[0]!;
+			const engine = piEngineForSpec({ provider: model.provider, id: model.id, thinkingLevel: "off" });
+			const result = await engine.streamFn(engine.model, normalizeContext({
+				messages: [{ role: "user", content: "offline", timestamp: 1 }],
+			}), {}).result();
+			assert.equal(result.stopReason, "error");
+			assert.match(result.errorMessage ?? "", /Recharge to continue/);
+			assert.equal(called, false);
+		} finally {
+			configureSpendGuard(async () => {});
+		}
 	});
 
 	test("an off reasoning level is sent as none, and image tool results stay in the request", async () => {
