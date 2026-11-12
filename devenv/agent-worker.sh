@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Cursor My Machines worker for this worktree (via `dev agent …`).
-# Uses a separate PM2 home (.pm2-agent) so `dev stop` cannot kill it.
+# Uses a separate PM2 home (/tmp/shunkan.<branch>-agent) so `dev stop` cannot kill it.
 #
 # The PM2 process is this supervisor, not a raw `agent worker`. Cursor's CLI
 # stays up across link drops and reconnects, so PM2 would otherwise stay
@@ -41,7 +41,9 @@ die() {
 # EX_TEMPFAIL. Not listed in PM2 stop_exit_codes, so autorestart brings it back.
 NORDIC_WORKER_DISCONNECT_EXIT=75
 
-export PM2_HOME="${NORDIC_PM2_AGENT_HOME:-${root}/.pm2-agent}"
+# shellcheck source=./pm2-home.sh
+. "$root/devenv/pm2-home.sh"
+nordic_pm2_export_agent_home || die "could not derive PM2_HOME from the current branch"
 # Per-worktree Cursor data dir — the CLI locks $dataDir/worker.lock globally per
 # path. Without this, a second worktree fails with "another worker daemon is
 # already running for this data dir: ~/.local/share/cursor-agent/worker.lock".

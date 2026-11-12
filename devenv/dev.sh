@@ -72,12 +72,14 @@ if [ -z "$root" ]; then
 fi
 cd "$root"
 
-export PM2_HOME="${PM2_HOME:-$root/.pm2}"
-
 die() {
 	printf 'dev: %s\n' "$*" >&2
 	exit 1
 }
+
+# shellcheck source=./pm2-home.sh
+. "$root/devenv/pm2-home.sh"
+nordic_pm2_export_stack_home || die "could not derive PM2_HOME from the current branch"
 
 # Print one `tailscale` argument line per port. Empty when this host is not
 # a tailnet https preview, or when the ports are unset.
