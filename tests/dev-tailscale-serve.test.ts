@@ -64,24 +64,24 @@ describe("tailscale preview commands", () => {
 	});
 
 	test("maps each local port to the same https port", () => {
-		assert.deepEqual(serveCommand(3009), ["serve", "--bg", "--https=3009", "3009"]);
-		assert.deepEqual(offCommand(3009), ["serve", "--https=3009", "3009", "off"]);
-		assert.deepEqual(serveSlots([3009, 9009]), [
-			["serve", "--bg", "--https=3009", "3009"],
-			["serve", "--bg", "--https=9009", "9009"],
+		assert.deepEqual(serveCommand(3309), ["serve", "--bg", "--https=3309", "3309"]);
+		assert.deepEqual(offCommand(3309), ["serve", "--https=3309", "3309", "off"]);
+		assert.deepEqual(serveSlots([3309, 9309]), [
+			["serve", "--bg", "--https=3309", "3309"],
+			["serve", "--bg", "--https=9309", "9309"],
 		]);
-		assert.deepEqual(offSlots([3009, 9009]), [
-			["serve", "--https=3009", "3009", "off"],
-			["serve", "--https=9009", "9009", "off"],
+		assert.deepEqual(offSlots([3309, 9309]), [
+			["serve", "--https=3309", "3309", "off"],
+			["serve", "--https=9309", "9309", "off"],
 		]);
 	});
 
 	test("public preview uses funnel for every port", () => {
-		assert.deepEqual(serveCommand(3009, { public: true }), ["funnel", "--bg", "--https=3009", "3009"]);
-		assert.deepEqual(offCommand(3009, { public: true }), ["funnel", "--https=3009", "3009", "off"]);
-		assert.deepEqual(serveSlots([3009, 9009], { public: true }), [
-			["funnel", "--bg", "--https=3009", "3009"],
-			["funnel", "--bg", "--https=9009", "9009"],
+		assert.deepEqual(serveCommand(3309, { public: true }), ["funnel", "--bg", "--https=3309", "3309"]);
+		assert.deepEqual(offCommand(3309, { public: true }), ["funnel", "--https=3309", "3309", "off"]);
+		assert.deepEqual(serveSlots([3309, 9309], { public: true }), [
+			["funnel", "--bg", "--https=3309", "3309"],
+			["funnel", "--bg", "--https=9309", "9309"],
 		]);
 	});
 });
@@ -102,6 +102,6 @@ describe("dev help", () => {
 		assert.match(top.stdout, /dev serve \[--public\]/);
 		assert.match(top.stdout, /dev seed/);
 		assert.match(top.stdout, /lint \| typecheck \| test \| build/);
-		assert.doesNotMatch(top.stdout, /3003/);
+		assert.doesNotMatch(top.stdout, /3303/);
 	});
 });

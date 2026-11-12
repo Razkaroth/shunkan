@@ -10,12 +10,12 @@ Use Node 24.22 or newer with pnpm 10.28, compatible with the lockfile and native
 
 ```bash
 pnpm install           # install the locked dependencies
-pnpm run dev           # Next development server, normally http://localhost:3000
+pnpm run dev           # Next development server, normally http://localhost:3300
 
 pnpm run build         # production Next build, including standalone output
 pnpm start             # serve the production build with Next
 
-pnpm run desktop:dev   # Next dev + Electron pointed at localhost:3000
+pnpm run desktop:dev   # Next dev + Electron pointed at localhost:3300
 ```
 
 No API key is required just to start the UI. Model calls are provisioned through the Vercel AI SDK and [AI Gateway](https://vercel.com/docs/ai-gateway). Set `AI_GATEWAY_API_KEY` for local and non-Vercel hosts; a Vercel deployment can use OIDC instead. Choose strong, cheap, and vision slots from gateway model ids (`creator/model`). There are no factory model choices. Per-provider API keys, the custom OpenAI-compatible endpoint, and ChatGPT/Codex or other subscription logins do not authenticate these calls. Existing sessions keep their explicit conversation model; background roles use their own settings resolution.
@@ -117,7 +117,7 @@ For an isolated reproduction, create a disposable data directory and a separate 
 ```bash
 LH_DATA_DIR=/absolute/path/to/scratch/data \
 LH_AUTH_FILE=/absolute/path/to/scratch/auth.json \
-pnpm run dev -- --port 3001
+pnpm run dev -- --port 3301
 ```
 
 Those two variables isolate app records and saved API keys, **not every external effect**. Ambient provider environment variables still win; subscription files follow the auth directory; Claude Code can use its native CLI authentication/profile. Learner file tools are read-only but resolve relative/default paths against the server user's home and can read outside the app data directory. An isolated data root is not a filesystem or credential sandbox. Use fake providers/fixtures for automated reproduction and avoid ambient credentials or personal files.

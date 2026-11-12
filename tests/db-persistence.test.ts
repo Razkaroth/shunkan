@@ -11,7 +11,7 @@ import { after, describe, it } from "node:test";
 
 const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lh-db-persist-"));
 const dbName = `shunkan_persist_${process.pid}`;
-const uri = process.env.SHUNKAN_TEST_MONGO ?? `mongodb://127.0.0.1:27117/${dbName}`;
+const uri = process.env.SHUNKAN_TEST_MONGO ?? `mongodb://127.0.0.1:27417/${dbName}`;
 process.env = {
 	...process.env,
 	LH_STORE: "database",

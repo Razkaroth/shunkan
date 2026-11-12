@@ -25,7 +25,7 @@ describe("browser-service helper (pure halves)", () => {
 	it("spawn env strips ELECTRON_RUN_AS_NODE — the helper must be a full app", () => {
 		const env = browserServiceSpawnEnv({
 			ELECTRON_RUN_AS_NODE: "1",
-			LH_DEV_URL: "http://localhost:3000",
+			LH_DEV_URL: "http://localhost:3300",
 			PATH: "/usr/bin",
 		});
 		assert.equal("ELECTRON_RUN_AS_NODE" in env, false);
