@@ -1,16 +1,16 @@
 # Pure helpers for `dev agent` (sourced by devenv/agent-worker.sh).
 # No `set -e` — callers own errexit. Safe to source from tests.
 
-# Sanitize a branch for the worker name suffix: lowercase, [a-z0-9_-] only.
+# Sanitize a branch for the worker name suffix. Case stays, so Raz-edition
+# remains Raz-edition. Characters outside [A-Za-z0-9_-] become dashes.
 nordic_worker_slug() {
   printf '%s' "$1" |
-    tr '[:upper:]' '[:lower:]' |
-    tr -c 'a-z0-9_-' '-' |
+    tr -c 'A-Za-z0-9_-' '-' |
     sed -E 's/-+/-/g; s/^-+//; s/-+$//'
 }
 
-# Cursor display name. Prefix is literal "Shunkan-" (repo name); the branch
-# is still sanitized the way `--name` was before the prefix.
+# Cursor display name. One app, so the reported name is shunkan-<branch>
+# (master → shunkan-master, Raz-edition → shunkan-Raz-edition).
 # Prints nothing and returns 1 when the branch sanitizes to empty.
 nordic_worker_name() {
   local slug
@@ -18,7 +18,7 @@ nordic_worker_name() {
   if [ -z "$slug" ]; then
     return 1
   fi
-  printf 'Shunkan-%s' "$slug"
+  printf 'shunkan-%s' "$slug"
 }
 
 # Last sample of a Prometheus metric. Accepts `name` or `name{labels}`.

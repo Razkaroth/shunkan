@@ -1,6 +1,6 @@
 const { root } = require("./compose.cjs");
 
-const port = process.env.APP_PORT || "3000";
+const port = process.env.APP_PORT || "3300";
 
 module.exports = {
 	apps: [

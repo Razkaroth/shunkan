@@ -4,9 +4,9 @@
 # a fresh instance with zero keys and zero data — setup stage 1, every
 # launch. The owner's repeatable first-run BYOK test bed.
 #
-#   bash scripts/dev-fresh.sh            # http://localhost:3005
+#   bash scripts/dev-fresh.sh            # http://localhost:3305
 #   pnpm run dev:fresh                   # the same, via package.json
-#   scripts/dev-fresh.sh --port 3006    # any port OUTSIDE 3000-3004
+#   scripts/dev-fresh.sh --port 3306    # any port OUTSIDE 3300-3304
 #   scripts/dev-fresh.sh --keep         # don't wipe between runs
 #                                        (multi-session testing)
 #
@@ -28,7 +28,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PORT="3005"
+PORT="3305"
 DATA_DIR="$ROOT/.fresh-data"
 KEEP=false
 
@@ -68,9 +68,9 @@ if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 case "$PORT" in
-3000 | 3001 | 3002 | 3003 | 3004)
-	echo "error: port $PORT is a standing assignment (3000 master, 3001 UI, 3002 graph, 3003 teacher, 3004 platform)" >&2
-	echo "       — the fresh instance runs on a dedicated port (default 3005)" >&2
+3300 | 3301 | 3302 | 3303 | 3304)
+	echo "error: port $PORT is a standing assignment (3300 master, 3301 UI, 3302 graph, 3303 teacher, 3304 platform)" >&2
+	echo "       — the fresh instance runs on a dedicated port (default 3305)" >&2
 	exit 1
 	;;
 esac

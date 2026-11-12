@@ -27,6 +27,11 @@ cd "$root"
 # shellcheck source=./agent-worker-lib.sh
 . "$root/devenv/agent-worker-lib.sh"
 
+# One application. The label is always shunkan. The reported worker name is
+# shunkan-<branch> from nordic_worker_name. Ignore any inherited app pin.
+APP_NAME=shunkan
+export APP_NAME
+
 NORDIC_CMD="dev agent"
 die() {
   printf '%s: %s\n' "$NORDIC_CMD" "$*" >&2
@@ -48,7 +53,7 @@ nordic_worker_branch() {
   local branch
   branch=$(git branch --show-current 2>/dev/null || true)
   if [ -z "$branch" ]; then
-    die "detached HEAD — check out a named branch (app.feature) before starting the worker"
+    die "detached HEAD — check out a named branch before starting the worker"
   fi
   printf '%s' "$branch"
 }
@@ -74,7 +79,7 @@ nordic_worker_mgmt_port() {
   if [ -n "${NORDIC_WORKER_MGMT_PORT:-}" ]; then
     port=$NORDIC_WORKER_MGMT_PORT
   else
-    local base=${NORDIC_WORKER_MGMT_PORT_BASE:-39100}
+    local base=${NORDIC_WORKER_MGMT_PORT_BASE:-39400}
     local offset=${PORT_OFFSET:-0}
     local i candidate
     case "$offset" in
@@ -237,13 +242,14 @@ cmd_print() {
   export NORDIC_WORKER_MGMT_PORT
   local -a argv=()
   mapfile -t argv < <(nordic_worker_argv)
+  [ "${#argv[@]}" -ge 2 ] || die "could not build the worker command"
   printf 'dev agent: would run (PM2_HOME=%s):\n' "$PM2_HOME"
   printf '  %q' "${argv[@]}"
   printf '\n'
 }
 
 cmd_run() {
-  # Invoked under PM2. Re-resolve from git/.app so a restart picks up renames.
+  # Invoked under PM2. Re-resolve from the current branch so a restart picks up a rename.
   nordic_worker_resolve
   local agent_bin=${NORDIC_AGENT_BIN:-agent}
   command -v "$agent_bin" >/dev/null 2>&1 || die "agent not on PATH (install Cursor CLI or enter the direnv shell)"
@@ -255,6 +261,7 @@ cmd_run() {
   export NORDIC_WORKER_MGMT_PORT
   local -a argv=()
   mapfile -t argv < <(nordic_worker_argv)
+  [ "${#argv[@]}" -ge 2 ] || die "could not build the worker command"
 
   local poll grace need
   poll=${NORDIC_WORKER_POLL_SEC:-10}
@@ -426,19 +433,19 @@ Usage: dev agent <command>
 
 Manage a per-worktree Cursor My Machines worker (separate from dev start/stop).
 
-  start    Start agent worker for this worktree (requires APP_NAME + named branch)
+  start    Start the agent worker for this worktree (a named branch is required)
   stop     Stop the worker (does not affect the app stack)
   restart  Stop the worker if it is up, then start it again
   status   Cursor link plus PM2 status. A dead link is restarted, not left online
   logs     Tail worker logs
   print    Print the agent worker argv without starting
 
-Identity (branch app or app.feature):
-  --name            Foundry-<sanitized branch>  e.g. la-verdad.migration → Foundry-la-verdad-migration
-  --label app=      $APP_NAME
+Identity (one app; the branch is the worktree branch):
+  --name            shunkan-<branch>  e.g. master → shunkan-master, Raz-edition → shunkan-Raz-edition
+  --label app=      shunkan
   --label branch=   raw branch name
   --data-dir        <worktree>/.cursor-worker  (isolates worker.lock per worktree)
-  --management-addr 127.0.0.1:(39100+PORT_OFFSET)  /metrics liveness
+  --management-addr 127.0.0.1:(39400+PORT_OFFSET)  /metrics liveness
 
 The supervisor scrapes cursor_self_hosted_worker_connected and
 cursor_self_hosted_worker_last_activity_unix_seconds. Disconnects are written

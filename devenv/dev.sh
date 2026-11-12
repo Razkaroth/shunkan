@@ -120,7 +120,7 @@ shunkan_tailscale_apply() {
 
 open_app_later() {
 	local url
-	url="${NEXT_PUBLIC_URL:-${NEXT_PUBLIC_SERVER_URL:-http://127.0.0.1:${APP_PORT:-3000}}}"
+	url="${NEXT_PUBLIC_URL:-${NEXT_PUBLIC_SERVER_URL:-http://127.0.0.1:${APP_PORT:-3300}}}"
 	printf 'dev: opening %s in 3s\n' "$url" >&2
 	nohup bash -c '
 		sleep 3
