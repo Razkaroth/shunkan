@@ -68,7 +68,7 @@ All three platforms support in-app updates.
 
 ```bash
 pnpm install
-pnpm run dev       # http://localhost:3000
+pnpm run dev       # http://localhost:3300
 pnpm test          # deterministic, no LLM, no network
 ```
 
