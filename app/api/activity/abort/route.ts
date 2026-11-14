@@ -17,7 +17,7 @@
  * Extraction abort is idempotent by design (aborting with nothing in
  * flight is success — the blob is gone either way) -> 200.
  */
-import { abortExtraction, abortJob, abortTurn, withUser } from "@/src/server";
+import { abortExtraction, abortJob, abortTurn, cancelJobRun, cancelTurnRun, hostedSessions, withUser } from "@/src/server";
 
 async function handlePOST(req: Request) {
 	let body: unknown;
@@ -35,6 +35,7 @@ async function handlePOST(req: Request) {
 	}
 
 	if (kind === "job") {
+		if (hostedSessions()) await cancelJobRun(id);
 		const outcome = abortJob(id);
 		if (!outcome.ok) {
 			const status = outcome.reason === "not_found" ? 404 : 409;
@@ -43,6 +44,11 @@ async function handlePOST(req: Request) {
 		return Response.json({ ok: true });
 	}
 	if (kind === "turn") {
+		if (hostedSessions()) {
+			const outcome = await cancelTurnRun(id);
+			if (!outcome.ok) return Response.json({ ok: false, reason: outcome.reason }, { status: 409 });
+			return Response.json({ ok: true });
+		}
 		const outcome = abortTurn(id);
 		if (!outcome.ok) return Response.json({ ok: false, reason: outcome.reason }, { status: 409 });
 		return Response.json({ ok: true });

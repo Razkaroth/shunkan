@@ -21,7 +21,9 @@ process.env = {
 	NODE_ENV: "test",
 };
 
-const { MongoClient } = createRequire(path.join(process.cwd(), "node_modules/mongoose/package.json"))("mongodb") as {
+const [mongoosePackage] = fs.globSync("node_modules/.pnpm/mongoose@*/node_modules/mongoose/package.json");
+if (!mongoosePackage) throw new Error("mongoose is not installed");
+const { MongoClient } = createRequire(path.resolve(mongoosePackage))("mongodb") as {
 	MongoClient: new (uri: string, options?: { serverSelectionTimeoutMS?: number }) => {
 		connect(): Promise<void>;
 		close(): Promise<void>;

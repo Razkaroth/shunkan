@@ -1738,12 +1738,12 @@ describe("stale-job recovery sweep (liveness-gated)", () => {
 		return { chatId: chat.id, jobId: job.id };
 	}
 
-	it("a running record with a LIVE loop registration is never recovered — however old (the double-run guard)", () => {
+	it("a running record with a stored run id is never recovered — however old (the double-run guard)", () => {
 		const { jobId } = orphanJob();
 		// Backdate the record well past every plausible in-flight run: age
 		// alone must NOT trigger recovery anymore.
-		jobStore.updateJob(jobId, { updatedAt: new Date(Date.now() - 30 * 60_000).toISOString() });
-		registerJobAbort(jobId, new AbortController()); // a loop is executing
+		jobStore.updateJob(jobId, { runId: "run_live", updatedAt: new Date(Date.now() - 30 * 60_000).toISOString() });
+		registerJobAbort(jobId, new AbortController());
 		// JURISDICTIONAL (owner round 8, 2026-10-05): the sweep scans the
 		// SHARED jobs dir — under the full suite, OTHER FILES' processes
 		// legitimately leave running records this sweep may respawn. Only

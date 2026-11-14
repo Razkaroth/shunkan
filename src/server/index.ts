@@ -7,6 +7,7 @@ import "./gateway-customer.ts";
 import "./billing-gate.ts";
 
 export * from "./chat-handler.ts";
+export * from "./session/http.ts";
 export * from "./events-stream.ts";
 export * from "./chats.ts";
 export * from "./graph.ts";

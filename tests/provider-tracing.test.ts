@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { describe, it } from "node:test";
-import nextConfig from "../next.config.ts";
+import nextConfigFactory from "../next.config.ts";
+
+const nextConfig = await nextConfigFactory("phase-export", { defaultConfig: {} as never });
 
 const require = createRequire(import.meta.url);
 // Use Next's actual bundled matcher, not a different glob implementation.

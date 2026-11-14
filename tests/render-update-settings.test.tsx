@@ -12,7 +12,9 @@ import { parseHTML } from "linkedom";
 import { UpdateSettings, updateStatusText, MANUAL_UPDATE_HINT, AUTO_UPDATE_HINT, type UpdateState } from "../components/settings/update-settings.tsx";
 import UpdateBanner from "../components/update-banner.tsx";
 import { SettingsDialogBody, SettingsDialogProvider } from "../components/settings/settings-dialog.tsx";
-import nextConfig from "../next.config.ts";
+import nextConfigFactory from "../next.config.ts";
+
+const nextConfig = await nextConfigFactory("phase-export", { defaultConfig: {} as never });
 
 const dom = parseHTML("<html><body></body></html>");
 Object.assign(globalThis, { window: dom.window, document: dom.document, CustomEvent: dom.window.CustomEvent });

@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
 import type { ChatStore } from "../core/ports.ts";
-import type { ChatRecord, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
+import type { ChatRecord, ChatRunPatch, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
@@ -84,7 +84,7 @@ function listChats(): ChatSummary[] {
 			.filter((f) => f.endsWith(".json"))
 			.map((f) => getChat(f.slice(0, -5)))
 			.filter((r): r is ChatRecord => r !== null)
-			.map(({ messages, tree, turns, extractions, ...summary }) => {
+			.map(({ messages, tree, turns, extractions, sessionRunId, turnRunId, pendingSteers, extractionRunId, compactionRunId, ...summary }) => {
 				// Per-record isolation (Wave B): a record whose messages fail the
 				// projection (e.g. pre-Wave-B UIMessage-format scratch — the
 				// zero-back-compat wipe makes these "corrupt") must not blank the
@@ -123,6 +123,21 @@ function listChats(): ChatSummary[] {
 /** Persist the full native message list (the record IS the agent state —
  *  Wave B: replay is state.messages = record.messages). SILENT by the
  *  events law — see the SILENCE LAW comment at createChat. */
+function patchChat(id: string, patch: ChatRunPatch): ChatRecord | null {
+	const record = getChat(id);
+	if (!record) return null;
+	const next: ChatRecord = { ...record };
+	const keys = ["sessionRunId", "turnRunId", "pendingSteers", "extractionRunId", "compactionRunId"] as const;
+	for (const key of keys) {
+		if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
+		const value = patch[key];
+		if (value === null || value === undefined) delete next[key];
+		else next[key] = value as never;
+	}
+	writeChat(next);
+	return getChat(id);
+}
+
 function saveMessages(id: string, messages: LhMessage[]): void {
 	const record = getChat(id);
 	if (!record) throw new Error(`Chat not found: ${id}`);
@@ -210,6 +225,7 @@ export const chatStore: ChatStore = {
 	getChat,
 	listChats,
 	saveMessages,
+	patchChat,
 	saveTree,
 	saveSettings,
 	renameChat,

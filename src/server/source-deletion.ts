@@ -26,11 +26,15 @@ export function parseSourceDeletion(raw: unknown): SourceDeletionRequest {
 /** A single synchronous deletion stretch, after the same global extraction
  * refusal as the old chains-view deletion. No imports or turns are cancelled.
  * Missing entries are harmless on retry after a partially completed I/O failure. */
-export function deleteSources(raw: unknown): SourceDirectory & { graphRevision: number } {
+export async function deleteSources(raw: unknown): Promise<SourceDirectory & { graphRevision: number }> {
 	const request = parseSourceDeletion(raw);
 	const directory = sourceDirectory.read(); // validate organization before any destructive write
 	const targets = directory.sources.filter((s) => request.sourceIds.includes(s.id));
 	if (targets.length && extractionStatuses().length) throw new SourceDeletionError("An extraction is running — try again when the activity dock drains.", 409, "extraction_running");
+	if (request.deleteSessions) {
+		const { turnChildOpen } = await import("./session/liveness.ts");
+		for (const entry of targets) if (entry.kind === "chat") await turnChildOpen(entry.id);
+	}
 	if (request.deleteSessions) for (const entry of targets) if (entry.kind === "chat") {
 		const blocker = runningWorkBlocker(entry.id);
 		if (blocker) throw new SourceDeletionError(blocker.error, blocker.status, blocker.code);

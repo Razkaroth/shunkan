@@ -28,6 +28,7 @@
 		"@earendil-works/pi-ai": "1.4.0",
 		"@modelcontextprotocol/sdk": "1.32.1",
 		"@mozilla/readability": "^0.6.0",
+		"@napi-rs/canvas": "1.0.9",
 		"@payloadcms/db-mongodb": "^3.92.1",
 		"@payloadcms/next": "^3.92.1",
 		"@payloadcms/richtext-lexical": "^3.92.1",
@@ -85,6 +86,7 @@
 		"turndown": "^7.2.4",
 		"typebox": "^1.3.27",
 		"use-stick-to-bottom": "^1.1.6",
+		"workflow": "^5.5.0",
 		"zod": "^4.4.3"
 	},
 	"pnpm": {
@@ -95,16 +97,22 @@
 	"devDependencies": {
 		"@next/eslint-plugin-next": "^16.4.3",
 		"@tailwindcss/postcss": "^4.3.3",
+		"@types/d3-force": "3.0.10",
+		"@types/d3-selection": "3.0.11",
+		"@types/d3-shape": "3.1.8",
+		"@types/d3-zoom": "3.0.8",
 		"@types/node": "^24.0.0",
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "^19.2.4",
 		"@types/turndown": "^5.0.6",
 		"@typescript-eslint/parser": "^8.68.0",
+		"@workflow/vitest": "5.0.9",
 		"eslint": "^9.39.5",
 		"eslint-import-resolver-typescript": "^4.4.5",
 		"eslint-plugin-import": "^2.32.0",
 		"tailwindcss": "^4.3.3",
 		"tsx": "^4.19.0",
-		"typescript": "^5.6.0"
+		"typescript": "^5.6.0",
+		"vitest": "^5.1.0"
 	}
 }

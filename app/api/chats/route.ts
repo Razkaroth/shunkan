@@ -1,6 +1,6 @@
 import { chainsForSelection, formatChainLine } from "@/src/core";
 import { newGraphContextMessage, type GraphContextPick } from "@/src/core";
-import { compactionInFlight, createChat, isTurnRunning, listChats, readSettingsRecord, stores, titleFromPrompt, trialBlockResponse, withUser } from "@/src/server";
+import { compactionChildOpen, compactionInFlight, createChat, listChats, readSettingsRecord, stores, titleFromPrompt, trialBlockResponse, turnChildOpen, withUser } from "@/src/server";
 import type { ChatListItem } from "@/src/core";
 
 /** The session picker's list: record-derived summaries (phase, pending
@@ -11,11 +11,11 @@ import type { ChatListItem } from "@/src/core";
  *  (a running spinner per row would double-signal them), so busy means
  *  exactly "a teach turn is in flight". */
 async function handleGET(_req: Request) {
-	const chats: ChatListItem[] = listChats().map((c) => ({
+	const chats: ChatListItem[] = await Promise.all(listChats().map(async (c) => ({
 		...c,
-		busy: isTurnRunning(c.id),
-		compacting: compactionInFlight(c.id),
-	}));
+		busy: await turnChildOpen(c.id),
+		compacting: (await compactionChildOpen(c.id)) || compactionInFlight(c.id),
+	})));
 	return Response.json({ chats });
 }
 

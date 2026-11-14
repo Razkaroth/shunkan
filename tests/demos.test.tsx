@@ -52,7 +52,7 @@ import { JobsContext } from "../components/jobs-context.ts";
 import { demoInputSchema, jobTools, pdfInputSchema, visualInputSchema } from "../src/agent/tools/jobs.ts";
 import { runDemoBuilder } from "../src/agent/subagents/demo-builder.ts";
 import { headlessOverride, type DemoRunResult, type HeadlessApi } from "../src/agent/subagents/headless.ts";
-import { createJobRunner, demoModelOverride, visualModelOverride } from "../src/agent/subagents/runner.ts";
+import { createJobRunner, demoBuilders, demoModelOverride, visualModelOverride } from "../src/agent/subagents/runner.ts";
 import { runVisualMaker } from "../src/agent/subagents/visual-maker.ts";
 import { buildAbortSteer, buildSubagentSteer, isSubagentFailure, setSteerUiInverted, type SteerMessage } from "../src/core/contracts.ts";
 import type { JobRecord } from "../src/core/contracts.ts";
@@ -794,74 +794,28 @@ async function drainRunning(chatId: string): Promise<string> {
 
 
 describe("demo/visual job runners", () => {
-	it("runJob completes a demo: result on the job, steer via deliver, ack stays on the part", async () => {
-		const chat = chatStore.createChat("Test: demo runner");
+	it("runDemoJob never calls runDemoBuilder", async () => {
+		const chat = chatStore.createChat("Test: demo runner off");
 		createdChats.push(chat.id);
-		// Wave B: a NATIVE fixture (the record holds agent history) — the
-		// runner's transcript scan reads it through the projection.
-		chatStore.saveMessages(chat.id, [
-			{ id: "u1", role: "user", content: "show me compounding", timestamp: 1 } as never,
-			{
-				id: "a1",
-				role: "assistant",
-				content: [{ type: "toolCall", id: "call-d1", name: "demo", arguments: DEMO_INPUT as never }],
-				api: "openai-completions",
-				provider: "openrouter",
-				model: "test",
-				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-				stopReason: "stop",
-				timestamp: 1,
-			} as never,
-			{
-				id: "r1",
-				role: "toolResult",
-				toolCallId: "call-d1",
-				toolName: "demo",
-				content: [{ type: "text", text: "Dispatched." }],
-				details: "Dispatched.",
-				isError: false,
-				timestamp: 1,
-			} as never,
-		]);
-
-		const job = jobStore.createJob({ kind: "demo", chatId: chat.id, toolCallId: "call-d1" });
+		const job = jobStore.createJob({ kind: "demo", chatId: chat.id, toolCallId: "call-d1", input: DEMO_INPUT });
 		createdJobs.push(job.id);
-
-		// runJob has no headless injection point — the module override is the seam.
-		headlessOverride.current = fakeHeadless();
-		demoModelOverride.current = scriptedModel([
-			{ toolCalls: [{ toolCallId: "w1", toolName: "write_demo", input: { html: GOOD_HTML } }] },
-			{ toolCalls: [{ toolCallId: "r1", toolName: "run_demo", input: {} }] },
-			{ text: "Sweep the rate slider." },
-		]);
-		const { steers, runner } = testRunner();
+		let calls = 0;
+		const original = demoBuilders.runDemoBuilder;
+		demoBuilders.runDemoBuilder = (async () => {
+			calls += 1;
+			return { title: "should not run", html: "", tested: true };
+		}) as typeof original;
 		try {
+			const { runner } = testRunner();
+			await runner.runJob(job.id);
 			await runner.runJob(job.id);
 		} finally {
-			headlessOverride.current = undefined;
-			demoModelOverride.current = undefined;
+			demoBuilders.runDemoBuilder = original;
 		}
-
-		const done = jobStore.getJob(job.id)!;
-		assert.equal(done.status, "done");
-		assert.equal(done.activity, "finished", "the worker finishes independently of delivery");
-		const result = done.result as { title: string; html: string; tested: boolean; notes?: string };
-		assert.equal(result.title, "Compound interest");
-		assert.equal(result.html, GOOD_HTML);
-		assert.equal(result.tested, true);
-
-		// The steer carries the artifact for the renderer.
-		assert.equal(steers.length, 1, "exactly one steer");
-		const data = steers[0]!.details as { kind: string; result: unknown };
-		assert.equal(data.kind, "demo");
-		assert.deepEqual(data.result, result);
-
-		// The tool part keeps the DISPATCH ACK forever — the result never
-		// rewrites it (the teacher gets the result once, via the steer).
-		const saved = projectNative(chatStore.getChat(chat.id)!.messages);
-		const part = saved[1]!.parts.find((p) => p.type === "tool-demo");
-		assert.ok(part && part.type === "tool-demo", "demo tool part persisted");
-		assert.equal(typeof (part as { output?: unknown }).output, "string", "part output is the ack, not the result");
+		assert.equal(calls, 0, "the deactivated runner returns before the builder");
+		const saved = jobStore.getJob(job.id)!;
+		assert.equal(saved.status, "error");
+		assert.equal(saved.result, undefined);
 	});
 
 	it("runJob still steers on visual failure and the job lands error", async () => {
@@ -913,84 +867,10 @@ describe("demo/visual job runners", () => {
 		assert.match(result.notes ?? "", /^FAILED:/);
 	});
 
-	it("dispatch through a teacher turn: the call acks mid-turn and the runner completes in the background", async () => {
-		const chat = chatStore.createChat("Test: demo spawn dispatch");
-		createdChats.push(chat.id);
-		// BYOK turn gate (owner, 2026-09-22): the scripted chat needs a
-		// conversation model — the per-chat pin, exactly like the setup flow.
-		chatStore.saveSettings(chat.id, { model: { provider: "openrouter", id: "z-ai/glm-5.3-flash" } });
-
-		// A teacher that calls demo on turn 1, then continues in the SAME turn.
-		const teacher = scriptedModel([
-			{ toolCalls: [{ toolCallId: "call-d2", toolName: "demo", input: DEMO_INPUT }] },
-			{ text: "Here it is." },
-		]);
-
-		// The overrides must be live BEFORE the request — dispatch fires the
-		// runner mid-stream, inside the tool execute.
-		demoModelOverride.current = scriptedModel([
-			{ toolCalls: [{ toolCallId: "w1", toolName: "write_demo", input: { html: GOOD_HTML } }] },
-			{ toolCalls: [{ toolCallId: "r1", toolName: "run_demo", input: {} }] },
-			{ text: "Sweep it." },
-		]);
-		headlessOverride.current = fakeHeadless();
-		const { steers, runner } = testRunner();
-
-		try {
-			const ack = await handleChatRequest(
-				new Request("http://test/api/chat", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						chatId: chat.id,
-						// Wave B: the input-events contract — one event,
-						// never a client transcript.
-						input: { type: "text", text: "teach me compounding" },
-					}),
-				}),
-				// The handler hands the factory the native build options
-				// (messages are the merged record; the record IS the agent
-				// state — no adapter conversion).
-				(opts) =>
-					createTeacherAgent(undefined, {
-						engine: teacher,
-						messages: opts.messages,
-						tools: createTeacherTools({
-							chatId: chat.id,
-							chatStore,
-							jobStore,
-							spawn: (job, input) => void runner.runJob(job.id, input),
-						}),
-					}),
-			);
-			if (ack.status !== 200) assert.fail(`expected 200 ack, got ${ack.status}: ${await ack.text()}`);
-			await drainRunning(chat.id);
-
-			const job = jobStore.findJobByToolCallId(chat.id, "call-d2");
-			assert.ok(job, "dispatch created a job at tool-execute time");
-			assert.equal(job!.kind, "demo");
-			createdJobs.push(job!.id);
-
-			// The background runner (fire-and-forget) completes with the overrides.
-			await waitFor(() => jobStore.getJob(job!.id)!.status !== "running", 8000, "demo job completion");
-			const done = jobStore.getJob(job!.id)!;
-			assert.equal(done.status, "done");
-
-			const saved = projectNative(chatStore.getChat(chat.id)!.messages);
-			const part = saved[1]!.parts.find((p) => p.type === "tool-demo");
-			assert.ok(part && part.type === "tool-demo", "demo tool part persisted");
-			assert.equal(part.state, "output-available", "the part resolved with the ack at dispatch time");
-			assert.match(String((part as { output?: unknown }).output), /fire-and-forget/);
-
-			assert.equal(steers.length, 1, "one job, one steer");
-			assert.equal((steers[0]!.details as { jobId: string }).jobId, job!.id);
-
-			// Idempotency: dispatch dedupes by toolCallId — no second job.
-			assert.equal(jobStore.listJobs(chat.id).length, 1, "no duplicate job for the same tool part");
-		} finally {
-			demoModelOverride.current = undefined;
-			headlessOverride.current = undefined;
-		}
+	it("demo dispatch does not create a job", () => {
+		const tools = jobTools({ chatId: "chat_demo_off", jobStore, spawn: () => { throw new Error("demo must not spawn"); } });
+		assert.equal("demo" in tools, false);
+		assert.equal(jobStore.listJobs("chat_demo_off").length, 0);
 	});
 });
 
@@ -1000,8 +880,8 @@ describe("tool + renderer registry wiring", () => {
 	it("demo and visual are SERVER-EXECUTED dispatch tools with the contract schemas", () => {
 		const { runner } = testRunner();
 		const tools = jobTools({ chatId: "chat_registry", jobStore, spawn: (job) => void runner.runJob(job.id) });
-		assert.deepEqual(Object.keys(tools).sort(), ["demo", "pdf", "research", "visual"]);
-		for (const name of ["demo", "visual", "research", "pdf"] as const) {
+		assert.deepEqual(Object.keys(tools).sort(), ["pdf", "research", "visual"]);
+		for (const name of ["visual", "research", "pdf"] as const) {
 			assert.equal(typeof (tools[name] as { execute?: unknown }).execute, "function", `${name} executes server-side — fire-and-forget ack per THE ASYNC PROTOCOL`);
 		}
 		assert.equal(Value.Check(demoInputSchema, { title: "T", brief: "b" }), true);
