@@ -1591,6 +1591,8 @@ export function Chat({
 													<PathText text={m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} />
 												</div>
 												{m.parts.filter((p) => p.type === "image" && typeof p.data === "string").map((p, index) => (
+													// A learner drawing is already a data URL. The image optimizer does not apply.
+													// eslint-disable-next-line @next/next/no-img-element
 													<img key={`${m.id}-img-${index}`} alt="" src={`data:${typeof p.mimeType === "string" ? p.mimeType : "image/png"};base64,${p.data as string}`} className="mt-2 max-h-[60vh] max-w-full" />
 												))}
 											</div>

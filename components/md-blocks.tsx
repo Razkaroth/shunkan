@@ -43,7 +43,7 @@ import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { chartSize, useSessionMermaid } from "@/components/session-overlay";
 import { Hint } from "@/components/ui/hint";
 import { useT } from "@/components/i18n";
-import { richCodeDecision } from "@/src/core/rich-code";
+import { richCodeDecision } from "@/src/core";
 import { RichCodeBlock, richFlagsFromDocument } from "@/components/rich-code";
 import { copyVisibility } from "@/components/phone-layout";
 import { usePhoneLayout } from "@/components/phone-layout-context";

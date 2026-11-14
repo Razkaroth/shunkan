@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useT } from "@/components/i18n";
-import { RICH_SVG_MAX, TEX_TIMEOUT_MS, type RichCodeDecision } from "@/src/core/rich-code";
+import { RICH_SVG_MAX, TEX_TIMEOUT_MS, type RichCodeDecision } from "@/src/core";
 
 /** Render one enabled smiles, abc, or tikz fence in the browser. */
 export function RichCodeBlock({ language, source, decision }: { language: string; source: string; decision: RichCodeDecision }) {
