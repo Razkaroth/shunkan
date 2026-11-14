@@ -234,6 +234,9 @@ export interface VisualResult {
 	/** Complete SVG markup (verified by the maker looking at the render). */
 	svg: string;
 	notes?: string;
+	/** Present when the figure annotates a learner image already in the message.
+	 * Photos never invert, and the card caps them at 60vh. */
+	image?: { snapshotId: string };
 }
 
 /** The pdf-reader (sources v0, 2026-09): reads a learner-provided PDF on

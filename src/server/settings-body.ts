@@ -283,6 +283,17 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 		}
 		settings.codeLigatures = raw.codeLigatures;
 	}
+	if (raw.richCode !== undefined) {
+		const rich = asRecord(raw.richCode);
+		if (!rich) return { ok: false, error: "richCode must be an object" };
+		const next: NonNullable<AppearanceSettings["richCode"]> = {};
+		for (const key of ["chemicalStructures", "musicalNotation", "technicalDiagrams"] as const) {
+			if (rich[key] === undefined) continue;
+			if (typeof rich[key] !== "boolean") return { ok: false, error: `${key} must be a boolean` };
+			next[key] = rich[key];
+		}
+		settings.richCode = next;
+	}
 	if (raw.textWidth !== undefined) {
 		if (!isTextWidth(raw.textWidth)) {
 			return { ok: false, error: `textWidth must be one of ${TEXT_WIDTHS.map((w) => `"${w}"`).join(", ")}` };

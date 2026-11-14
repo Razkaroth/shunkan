@@ -56,6 +56,15 @@ function authRecordName(abs: string, authFile: string): string | null {
 	return null;
 }
 
+/** A file under the product data root. Hosted runs persist it through learner-records. */
+export function productPath(...parts: string[]): string {
+	const root = requireRoots().dataRoot;
+	if (parts.length === 0 || parts.some((part) => !part || part === "." || part === ".." || part.includes("/") || part.includes("\\"))) {
+		throw new Error("invalid data path");
+	}
+	return path.join(root, ...parts);
+}
+
 /** Relative record path, or null when this path is not durable product data. */
 export function logicalKey(file: string): string | null {
 	if (!usesDatabase()) return null;

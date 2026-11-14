@@ -79,6 +79,8 @@ export function VisualOutputCard({
 		);
 	}
 	const failed = result.svg.length === 0;
+	const invertible = result.image === undefined;
+	const shownInverted = invertible && inverted;
 	if (failed) {
 		return (
 			<div className="lh-measure rounded-xl border bg-card p-4 text-card-foreground" data-testid="visual-card-failed">
@@ -98,8 +100,8 @@ export function VisualOutputCard({
 		   so the row hugs a centered narrow figure, not the column). */
 		<div
 			className={
-				natural !== null
-					? "lh-media my-4 w-fit"
+				!invertible || natural !== null
+					? "lh-media my-4 mx-auto w-fit max-w-full"
 					: "lh-media my-4 w-full"
 			}
 			data-testid="visual-card"
@@ -112,24 +114,31 @@ export function VisualOutputCard({
 			   backing. */}
 			<div
 				className={
-					natural !== null
+					!invertible || natural !== null
 						? "w-fit max-w-full overflow-hidden rounded-lg bg-white"
 						: "w-full overflow-hidden rounded-lg bg-white"
 				}
-				style={{ filter: inverted ? "invert(1) hue-rotate(180deg)" : undefined }}
+				style={{ filter: shownInverted ? "invert(1) hue-rotate(180deg)" : undefined }}
 				data-testid="visual-svg"
 			>
 				<SvgImage
 					svg={result.svg}
 					width={natural ?? undefined}
-					className={natural !== null ? "block h-auto max-w-full" : "block h-auto w-full"}
+					className={
+						!invertible
+							? "block h-auto w-auto max-h-[60vh] max-w-full"
+							: natural !== null ? "block h-auto max-w-full" : "block h-auto w-full"
+					}
 				/>
 			</div>
-			<div className="mt-2 flex items-center justify-between gap-2">
+			<div className={
+				!invertible
+					? "mt-2 flex w-0 min-w-full flex-wrap items-center justify-between gap-2"
+					: "mt-2 flex items-center justify-between gap-2"
+			}>
 				<div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t("artifacts.visual.label")}</div>
-				<div className="flex items-center gap-1.5">
-					{/* The invert affordance (owner round, 2026-10-07): the disc IS
-					    the half-filled contrast circle; the tooltip names it. */}
+				<div className={!invertible ? "ml-auto flex items-center gap-1.5" : "flex items-center gap-1.5"}>
+					{invertible && (
 					<Toggle
 						checked={inverted}
 						onChange={toggleInverted}
@@ -137,6 +146,7 @@ export function VisualOutputCard({
 						title={t("artifacts.common.invertColors")}
 						discIcon={<InvertDiscIcon className="size-3" />}
 					/>
+					)}
 					<button
 						type="button"
 						aria-label={t("artifacts.visual.downloadLabel")}
@@ -152,7 +162,7 @@ export function VisualOutputCard({
 							type="button"
 							aria-label={t("artifacts.visual.openLabel")}
 							title={t("artifacts.visual.openTitle")}
-							onClick={() => overlay.openFigure(result.svg, inverted)}
+							onClick={() => overlay.openFigure(result.svg, shownInverted)}
 							data-testid="visual-open"
 							className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
 						>

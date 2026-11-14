@@ -420,6 +420,12 @@ export interface AppearanceSettings {
 	sessionNameSerif?: boolean;
 	/** Code ligatures in code blocks and inline code. Default off. */
 	codeLigatures?: boolean;
+	/** Rich fences. Each family defaults off when absent. */
+	richCode?: {
+		chemicalStructures?: boolean;
+		musicalNotation?: boolean;
+		technicalDiagrams?: boolean;
+	};
 	/** Chat text measure, centered in the transcript column (default xl —
 	 *  widescreen support). */
 	textWidth?: TextWidth;
@@ -788,6 +794,17 @@ function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 	if (sessionNameSerif !== undefined) out.sessionNameSerif = sessionNameSerif;
 	const codeLigatures = boolOrDrop(raw.codeLigatures);
 	if (codeLigatures !== undefined) out.codeLigatures = codeLigatures;
+	if (raw.richCode && typeof raw.richCode === "object") {
+		const rich = raw.richCode as Record<string, unknown>;
+		const chemicalStructures = boolOrDrop(rich.chemicalStructures);
+		const musicalNotation = boolOrDrop(rich.musicalNotation);
+		const technicalDiagrams = boolOrDrop(rich.technicalDiagrams);
+		out.richCode = {
+			...(chemicalStructures !== undefined ? { chemicalStructures } : {}),
+			...(musicalNotation !== undefined ? { musicalNotation } : {}),
+			...(technicalDiagrams !== undefined ? { technicalDiagrams } : {}),
+		};
+	}
 	if (isTextWidth(raw.textWidth)) out.textWidth = raw.textWidth;
 	const constrainMedia = boolOrDrop(raw.constrainMedia);
 	if (constrainMedia !== undefined) out.constrainMedia = constrainMedia;

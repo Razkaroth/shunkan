@@ -153,6 +153,14 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 	// the factory stylesheet value returns.
 	const appliedNamesRef = useRef<Set<string>>(new Set());
 	useEffect(() => {
+		const root = document.documentElement;
+		const flags = delta?.richCode;
+		root.dataset.richChemical = flags?.chemicalStructures ? "1" : "";
+		root.dataset.richMusic = flags?.musicalNotation ? "1" : "";
+		root.dataset.richDiagrams = flags?.technicalDiagrams ? "1" : "";
+	}, [delta]);
+
+	useEffect(() => {
 		if (appliedRef.current === key) return;
 		appliedRef.current = key;
 		const root = document.documentElement;

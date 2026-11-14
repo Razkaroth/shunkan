@@ -346,6 +346,30 @@ export function AppearanceSection({
 					onChange={(on) => onSectionChange({ ...appearance, codeLigatures: on })}
 				/>
 			</SettingsRow>
+			<SettingsRow label={t("settings.appearance.richChemical")} testid="row-rich-chemical">
+				<Toggle
+					checked={appearance?.richCode?.chemicalStructures ?? false}
+					label={t("settings.appearance.richChemical.aria")}
+					testid="toggle-rich-chemical"
+					onChange={(on) => onSectionChange({ ...appearance, richCode: { ...appearance?.richCode, chemicalStructures: on } })}
+				/>
+			</SettingsRow>
+			<SettingsRow label={t("settings.appearance.richMusic")} testid="row-rich-music">
+				<Toggle
+					checked={appearance?.richCode?.musicalNotation ?? false}
+					label={t("settings.appearance.richMusic.aria")}
+					testid="toggle-rich-music"
+					onChange={(on) => onSectionChange({ ...appearance, richCode: { ...appearance?.richCode, musicalNotation: on } })}
+				/>
+			</SettingsRow>
+			<SettingsRow label={t("settings.appearance.richDiagrams")} testid="row-rich-diagrams">
+				<Toggle
+					checked={appearance?.richCode?.technicalDiagrams ?? false}
+					label={t("settings.appearance.richDiagrams.aria")}
+					testid="toggle-rich-diagrams"
+					onChange={(on) => onSectionChange({ ...appearance, richCode: { ...appearance?.richCode, technicalDiagrams: on } })}
+				/>
+			</SettingsRow>
 			<SettingsRow label={t("settings.appearance.headingWeight")} hint={`${resolved.mdRendering.headingWeight}`} testid="row-heading-weight">
 				<CommitInput
 					type="number"
