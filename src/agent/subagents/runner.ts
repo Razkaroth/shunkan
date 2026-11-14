@@ -28,6 +28,9 @@ import { ROLE_SLOT, modelsNotConfigured, type ModelSlotName, type ProviderKeyMis
 import type { ChatStore, JobStore } from "../../core/ports.ts";
 import type { AppLanguage } from "../../core/i18n.ts";
 import { runDemoBuilder } from "./demo-builder.ts";
+
+/** The only call site the deactivated demo path could reach. Tests replace it. */
+export const demoBuilders = { runDemoBuilder };
 import { runPdfReaderAgent } from "./pdf-reader.ts";
 import { runResearcherAgent } from "./researcher.ts";
 import { runVisualMaker } from "./visual-maker.ts";
@@ -199,6 +202,12 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 			return;
 		}
 		if (job.status !== "running") return; // already finished / re-run after crash recovery
+		// Demo dispatch is off before the model gate, the builder, and any failure steer.
+		if (job.kind === "demo") {
+			const stub = { model: { provider: "off", id: "off" } } as PiEngine;
+			await runDemoJob(jobId, stub, input, makeLoopContext(jobId, stub));
+			return;
+		}
 		const run = KIND_RUNNERS[job.kind];
 		if (!run) {
 			console.error(`[job ${jobId}] unknown kind: ${job.kind}`);
@@ -412,40 +421,17 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 
 	async function runDemoJob(
 		jobId: string,
-		model: PiEngine | undefined,
-		passedInput: JobToolInput | undefined,
-		loop: LoopContext,
+		_model: PiEngine | undefined,
+		_passedInput: JobToolInput | undefined,
+		_loop: LoopContext,
 	): Promise<void> {
-		const ctx = jobContext(jobId);
-		if (!ctx) return;
-		const { job } = ctx;
-
-		const input = (passedInput ?? resolveInput(job, passedInput)) as DemoToolInput | undefined;
-		const title = typeof input?.title === "string" && input.title.trim() ? input.title : "Interactive demo";
-		const brief = typeof input?.brief === "string" ? input.brief : "";
-
-		try {
-			jobStore.updateJob(jobId, { activity: "building demo" });
-			const result = await runDemoBuilder(
-				{ title, brief },
-				{
-					engine: model,
-					abortSignal: loop.abortSignal,
-					chatId: loop.chatId,
-					language: deps.language?.(),
-					onUsage: (usage) => loop.onUsage(piUsageToStep(usage)),
-					onActivity: (line) => jobStore.updateJob(jobId, { activity: line }),
-				},
-			);
-			if (isDemoFailure(result) && stillRunning(jobId))
-				jobStore.updateJob(jobId, { error: result.notes ?? "demo build failed" });
-			await finishJob(jobId, result);
-		} catch (err) {
-			if (loop.abortSignal.aborted) return;
-			const reason = err instanceof Error ? err.message : String(err);
-			if (stillRunning(jobId)) jobStore.updateJob(jobId, { error: reason });
-			await finishJob(jobId, { title, html: "", tested: true, notes: `FAILED: ${reason}` });
+		// Demo dispatch is off, including when the orphan sweep calls runJob.
+		// Return before the builder. A still-running row would be swept again,
+		// so mark it terminal without a delivery.
+		if (jobStore.getJob(jobId)?.status === "running") {
+			jobStore.updateJob(jobId, { status: "error", error: "demo dispatch is off", activity: "failed" });
 		}
+		return;
 	}
 
 	async function runVisualJob(
@@ -529,11 +515,6 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 }
 
 // ─── module-level pure helpers ──────────────────────────────────────────────
-
-/** Failure shape (W6 brief): html === "" with "FAILED: …" notes. */
-function isDemoFailure(result: DemoResult): boolean {
-	return typeof result.html !== "string" || result.html.length === 0;
-}
 
 function isVisualFailure(result: VisualResult): boolean {
 	return typeof result.svg !== "string" || result.svg.length === 0;

@@ -33,6 +33,9 @@
 		"plugins": [
 			{
 				"name": "next"
+			},
+			{
+				"name": "workflow"
 			}
 		],
 		"allowJs": true

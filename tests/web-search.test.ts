@@ -290,7 +290,8 @@ describe("keyless research dispatch (jobTools)", () => {
 	it("searchAvailable: false → research remains in the registry", () => {
 		const tools = jobTools(fakeCtx(() => false));
 		assert.ok(tools.research, "research can fetch supplied URLs without a search provider");
-		assert.ok(tools.demo && tools.visual && tools.pdf, "the search-less server keeps its other sub-agents");
+		assert.equal(tools.demo, undefined, "demo dispatch is off");
+		assert.ok(tools.visual && tools.pdf, "the search-less server keeps its other sub-agents");
 	});
 
 	it("keyless dispatch preserves the async job acknowledgement and spawn contract", async () => {
@@ -343,7 +344,8 @@ describe("keyless role registries", () => {
 			searchAvailable: () => false,
 		});
 		assert.ok(tools.research, "no search key is required to dispatch research");
-		assert.ok(tools.demo && tools.visual && tools.pdf, "the other job tools survive");
+		assert.equal(tools.demo, undefined, "demo dispatch is off");
+		assert.ok(tools.visual && tools.pdf, "the other job tools survive");
 	});
 
 	it("createTeacherTools: available keeps research", () => {
@@ -392,6 +394,7 @@ describe("keyless role registries", () => {
 			{ research: false },
 		);
 		assert.equal("research" in tools, false);
-		assert.ok(tools.pdf && tools.demo && tools.visual);
+		assert.equal(tools.demo, undefined);
+		assert.ok(tools.pdf && tools.visual);
 	});
 });

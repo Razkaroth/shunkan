@@ -77,6 +77,8 @@ function dispatch(
 	ack: string,
 	input: ResearchInput | DemoInput | VisualInput | PdfInput,
 ): string {
+	// Demo dispatch is off. Return before any job row or runner exists.
+	if (kind === "demo") return ack;
 	const existing = ctx.jobStore.findJobByToolCallId(ctx.chatId, toolCallId);
 	const job = existing ?? ctx.jobStore.createJob({ kind, chatId: ctx.chatId, toolCallId, input });
 	if (!existing) ctx.spawn(job, input);
@@ -138,13 +140,6 @@ export function jobTools(ctx: JobToolContext): Record<string, AgentTool<any>> {
 			execute: serverExecute("research", researchInputSchema, (input, { toolCallId }) =>
 				dispatch(ctx, "research", toolCallId, RESEARCH_ACK, input),
 			),
-		},
-		demo: {
-			name: "demo",
-			label: "demo",
-			description: DEMO_DESCRIPTION,
-			parameters: demoInputSchema,
-			execute: serverExecute("demo", demoInputSchema, (input, { toolCallId }) => dispatch(ctx, "demo", toolCallId, DEMO_ACK, input)),
 		},
 		visual: {
 			name: "visual",

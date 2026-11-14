@@ -69,7 +69,7 @@ export type ChatDeleteOutcome =
  *      nothing merged.
  */
 export function runningWorkBlocker(chatId: string): Extract<ChatDeleteOutcome, { status: 409 }> | null {
-	if (isTurnRunning(chatId)) {
+	if (stores.chatStore.getChat(chatId)?.turnRunId || isTurnRunning(chatId)) {
 		return {
 			ok: false,
 			status: 409,
@@ -96,6 +96,8 @@ export function runningWorkBlocker(chatId: string): Extract<ChatDeleteOutcome, {
 }
 
 export async function deleteChatSession(chatId: string, mode: ChatDeleteMode): Promise<ChatDeleteOutcome> {
+	const { turnChildOpen } = await import("./session/liveness.ts");
+	await turnChildOpen(chatId);
 	if (!stores.chatStore.getChat(chatId)) {
 		return { ok: false, status: 404, code: "not_found", error: "No such session" };
 	}

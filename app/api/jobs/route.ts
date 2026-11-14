@@ -1,4 +1,4 @@
-import { isTurnRunning, listJobs, withUser } from "@/src/server";
+import { listJobs, turnChildOpen, withUser } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ async function handleGET(req: Request) {
 	if (!/^[A-Za-z0-9_-]+$/.test(chatId)) {
 		return Response.json({ error: "Invalid chatId" }, { status: 400 });
 	}
-	return Response.json({ jobs: listJobs(chatId), turnInFlight: isTurnRunning(chatId) });
+	return Response.json({ jobs: listJobs(chatId), turnInFlight: await turnChildOpen(chatId) });
 }
 
 export const GET = withUser(handleGET);

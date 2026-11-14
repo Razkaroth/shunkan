@@ -12,6 +12,7 @@
 import type { LhMessage } from "./native-messages.ts";
 import type {
 	ChatRecord,
+	ChatRunPatch,
 	ChatSettings,
 	ChatSummary,
 	GraphChain,
@@ -42,6 +43,8 @@ export interface ChatStore {
 	/** Persist the full native message list (the record IS the agent
 	 * state — Wave B, owner-approved 2026-09-26). */
 	saveMessages(id: string, messages: LhMessage[]): void;
+	/** Merge run ids and parked steers. Null clears a field. Does not bump updatedAt. */
+	patchChat(id: string, patch: ChatRunPatch): ChatRecord | null;
 	/** Persist the session plan tree (plan tools call this in execute). */
 	saveTree(id: string, tree: PlanTree): void;
 	/** Append one usage entry to the record's turn log (the money channel,

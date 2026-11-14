@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { withPayload } from "@payloadcms/next/withPayload";
+import { withWorkflow } from "workflow/next";
 import type { NextConfig } from "next";
 import { MAX_IMPORT_BODY_BYTES } from "./lib/notes-import-limits.ts";
 
@@ -124,4 +125,4 @@ const nextConfig: NextConfig = {
 	],
 };
 
-export default withPayload(nextConfig);
+export default withWorkflow(withPayload(nextConfig));

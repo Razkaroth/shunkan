@@ -58,6 +58,25 @@ export interface ChatRecord {
 	 *  (the downgrade scenario) is REFUSED on read: a read-modify-write
 	 *  store must never rewrite what it doesn't understand. */
 	version?: number;
+	/** Workflow run that owns `session:${id}`. Absence means no run. */
+	sessionRunId?: string;
+	/** Workflow run of the open turn child. Absence means no turn run. */
+	turnRunId?: string;
+	/** User steers parked while a turn child is open. The next generation appends them. */
+	pendingSteers?: LhMessage[];
+	/** Extraction child run. Absence means no run. The id is the single flight. */
+	extractionRunId?: string;
+	/** Compaction child run. Absence means no run. The id is the single flight. */
+	compactionRunId?: string;
+}
+
+/** A patch for the run ids and parked steers. Null clears the field. */
+export interface ChatRunPatch {
+	sessionRunId?: string | null;
+	turnRunId?: string | null;
+	pendingSteers?: LhMessage[] | null;
+	extractionRunId?: string | null;
+	compactionRunId?: string | null;
 }
 
 /** The chat record format this build writes and understands. */

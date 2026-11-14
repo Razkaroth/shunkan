@@ -103,7 +103,7 @@ function settlementErrorText(error: unknown): string {
 	return error instanceof TurnPersistenceError ? error.message : "An error occurred.";
 }
 
-const jobRunner = createJobRunner({
+export const jobRunner = createJobRunner({
 	chatStore: stores.chatStore,
 	jobStore: stores.jobStore,
 	deliver: deliverJobResult,
@@ -170,7 +170,15 @@ function retentionForSlot(slot: ModelSlotName) {
 	return () => stores.settingsStore.readSettings()?.models?.[slot]?.cacheRetention;
 }
 
-setJobRespawn((jobId) => void jobRunner.runJob(jobId));
+setJobRespawn((jobId) => {
+	if (process.env.NODE_ENV === "test") {
+		void jobRunner.runJob(jobId);
+		return;
+	}
+	void import("./session/wake.ts").then(({ startJobWorkflow }) => startJobWorkflow(jobId)).catch((error) => {
+		console.error(`[job ${jobId}] workflow start failed`, error);
+	});
+});
 
 /** The route-facing entry: parse {chatId, input} and run one turn. */
 export async function handleChatRequest(
@@ -370,10 +378,16 @@ export async function handleChatInput(
 		return settledTurnResponse(); // the cheap terminal — no beginTurn, no turn
 	}
 
-	// One turn per chat, ever. A second request while a turn runs means a
-	// stale/remounted client raced a live one — letting it through would
-	// double-run the teacher and clobber the first turn's persist.
-	if (!beginTurn(chatId)) {
+	// One turn per chat. Hosted liveness is the stored turn-child run id.
+	// The in-process registry remains the lock for direct step tests.
+	const hosted = process.env.NODE_ENV !== "test";
+	if (hosted) {
+		const { turnChildOpen } = await import("./session/liveness.ts");
+		if (await turnChildOpen(chatId)) {
+			console.info(`[chat ${chatId}] turn already in flight — request rejected`);
+			return Response.json({ error: "A turn is already running for this session" }, { status: 409 });
+		}
+	} else if (!beginTurn(chatId)) {
 		console.info(`[chat ${chatId}] turn already in flight — request rejected`);
 		return Response.json({ error: "A turn is already running for this session" }, { status: 409 });
 	}
@@ -396,8 +410,18 @@ export async function handleChatInput(
 		if (!stagedAutomatic) stores.chatStore.saveMessages(chatId, merged);
 	} catch (err) {
 		console.error(`[chat ${chatId}] write-ahead persist failed:`, err);
-		endTurn(chatId);
+		if (!hosted) endTurn(chatId);
 		return new Response("Your input could not be saved. Please try again.", { status: 500 });
+	}
+	if (hosted) {
+		try {
+			const { wakeSession } = await import("./session/wake.ts");
+			await wakeSession(chatId, { kind: "input" });
+		} catch (err) {
+			console.error(`[chat ${chatId}] session wake failed:`, err);
+			return Response.json({ error: "Failed to start the turn" }, { status: 500 });
+		}
+		return Response.json({ ok: true });
 	}
 	// Visibility bookkeeping is not the canonical save. Its failure must
 	// neither misreport a saved input as lost nor prevent the turn running.

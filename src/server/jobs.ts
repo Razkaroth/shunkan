@@ -225,10 +225,32 @@ function finalizeSteer(steer: SteerMessage): void {
  * failed starts stay pending. Non-job probe handoffs keep their existing
  * wake-acceptance/error semantics. Workers never await this promise. */
 export function deliverJobResult(steer: SteerMessage): Promise<void> {
+	if (process.env.NODE_ENV !== "test") return deliverHosted(steer);
 	const chatId = chatIdOf(steer);
 	const entry = queueSteer(chatId, steer);
 	void pump(chatId);
 	return entry.promise;
+}
+
+/** Hosted delivery wakes the session. A job workflow that owns a run id resumes itself. */
+async function deliverHosted(steer: SteerMessage): Promise<void> {
+	const { resumeHook } = await import("workflow/api");
+	const { sessionToken } = await import("./session/hints.ts");
+	if (steer.customType === "probe-handoff") {
+		const chatId = (steer.details as { chatId: string }).chatId;
+		const record = stores.chatStore.getChat(chatId);
+		if (!record) return;
+		const pending = record.pendingSteers ?? [];
+		if (!pending.some((message) => message.id === steer.id) && !record.messages.some((message) => message.id === steer.id)) {
+			stores.chatStore.patchChat(chatId, { pendingSteers: [...pending, steer] });
+		}
+		await resumeHook(sessionToken(chatId), { kind: "input" });
+		return;
+	}
+	const jobId = jobIdOf(steer);
+	const job = jobId ? stores.jobStore.getJob(jobId) : null;
+	if (!job || job.runId) return;
+	await resumeHook(sessionToken(job.chatId), { kind: "job" });
 }
 
 function queueSteer(chatId: string, steer: SteerMessage): QueuedSteer {
@@ -462,6 +484,12 @@ export function abortJob(jobId: string): AbortOutcome {
 		status: "error", error: "Aborted by learner", activity: "aborted",
 		delivery: { kind: "abort", status: "pending" },
 	});
+	if (process.env.NODE_ENV !== "test") {
+		void import("workflow/api").then(({ resumeHook }) =>
+			import("./session/hints.ts").then(({ sessionToken }) => resumeHook(sessionToken(job.chatId), { kind: "job" })),
+		).catch((error) => console.error(`[job ${jobId}] session resume failed`, error));
+		return { ok: true };
+	}
 	void deliverJobResult(buildAbortSteer(job)).catch(() => {
 		/* The saved pending abort notice remains owned by the session. */
 	});
@@ -765,10 +793,15 @@ export function recoverStaleJobs(): void {
 		if (now - s.lastSweepAt < SWEEP_THROTTLE_MS) return;
 		s.lastSweepAt = now;
 	}
+	if (process.env.NODE_ENV !== "test") {
+		void recoverHosted();
+		return;
+	}
 	try {
 		for (const chat of stores.chatStore.listChats()) {
 			for (const job of stores.jobStore.listJobs(chat.id)) {
-				if (isJobLive(job.id)) continue; // never re-run beside live computation
+				// A stored run id is the lock. The in-memory abort registry is not liveness.
+				if (job.runId) continue;
 				if (!stores.chatStore.getChat(job.chatId)) continue;
 				if (isTurnRunning(job.chatId)) continue;
 				const recovered = normalizeLegacyResult(job);
@@ -776,10 +809,42 @@ export function recoverStaleJobs(): void {
 					restorePendingDeliveries(job.chatId);
 					void pump(job.chatId);
 				} else if (job.status === "running" && !job.result) {
-					// The sub-agent loop itself died with the process: re-spawn.
 					if (!s.respawn) continue;
 					stores.jobStore.updateJob(job.id, { activity: "recovering: re-running" });
 					s.respawn(job.id);
+				}
+			}
+		}
+	} catch (err) {
+		console.error("[jobs] stale-job recovery sweep failed:", err);
+	}
+}
+
+/** Hosted sweep: a running or pending workflow run is live. A finished or missing run is the orphan. */
+async function recoverHosted(): Promise<void> {
+	const { startJobWorkflow } = await import("./session/wake.ts");
+	const { runIsOpen, turnChildOpen } = await import("./session/liveness.ts");
+	const { resumeHook } = await import("workflow/api");
+	const { sessionToken } = await import("./session/hints.ts");
+	try {
+		for (const chat of stores.chatStore.listChats()) {
+			for (const job of stores.jobStore.listJobs(chat.id)) {
+				if (job.runId && await runIsOpen(job.runId)) continue;
+				if (!stores.chatStore.getChat(job.chatId)) continue;
+				if (await turnChildOpen(job.chatId)) continue;
+				const recovered = normalizeLegacyResult(job);
+				if (recovered.delivery?.status === "pending") {
+					await resumeHook(sessionToken(job.chatId), { kind: "job" });
+				} else if (job.kind === "demo" && job.status === "running" && !job.result) {
+					stores.jobStore.updateJob(job.id, { status: "error", error: "demo dispatch is off", activity: "failed" });
+				} else if (job.status === "running" && !job.result) {
+					stores.jobStore.updateJob(job.id, { activity: "recovering: re-running" });
+					if (job.kind === "visual") {
+						const { jobRunner } = await import("./chat-handler.ts");
+						void jobRunner.runJob(job.id);
+					} else {
+						await startJobWorkflow(job.id);
+					}
 				}
 			}
 		}

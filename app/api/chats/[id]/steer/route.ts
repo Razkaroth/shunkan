@@ -11,7 +11,7 @@
 // registry copy survives a question termination or abort and rides the
 // chat's next run.
 import { ChatInputError, newUserSteer, parseUserSteerInput } from "@/src/core";
-import { getChat, steerLiveChat, withUser } from "@/src/server";
+import { appendPendingSteer, getChat, hostedSessions, steerLiveChat, withUser } from "@/src/server";
 
 async function handlePOST(request: Request, ctx: { params: Promise<{ id: string }> }): Promise<Response> {
 	const { id } = await ctx.params;
@@ -25,6 +25,12 @@ async function handlePOST(request: Request, ctx: { params: Promise<{ id: string 
 		throw err;
 	}
 	const message = newUserSteer(input.text, input.id);
+	if (hostedSessions()) {
+		if (!(await appendPendingSteer(id, message))) {
+			return Response.json({ error: "no live turn to steer" }, { status: 409 });
+		}
+		return Response.json({ ok: true });
+	}
 	if (!steerLiveChat(id, message)) {
 		return Response.json({ error: "no live turn to steer" }, { status: 409 });
 	}

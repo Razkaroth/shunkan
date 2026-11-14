@@ -40,6 +40,8 @@ export interface JobRecord {
 	 * inferred at read time (core/prices.ts). Absent on pre-2026-09 jobs and
 	 * until the runner's capture lands — renderers show "—", never zero. */
 	usage?: JobUsage;
+	/** Workflow run id while a research or pdf job is live. Absence means no run. The id is the sweep's lock. */
+	runId?: string;
 }
 
 /** A sub-agent run's accumulated usage — the same accounting shape as a

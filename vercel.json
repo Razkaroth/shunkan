@@ -1,0 +1,7 @@
+{
+	"functions": {
+		"app/api/chats/[id]/stream/route.ts": {
+			"supportsCancellation": true
+		}
+	}
+}
