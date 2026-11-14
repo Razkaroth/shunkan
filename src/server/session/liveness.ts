@@ -1,4 +1,5 @@
 import { getRun } from "workflow/api";
+import { RunExpiredError, WorkflowRunNotFoundError } from "workflow/errors";
 import { isTurnRunning } from "../turn-liveness.ts";
 import { stores } from "../stores.ts";
 
@@ -8,8 +9,9 @@ export async function runIsOpen(runId: string): Promise<boolean> {
 		const status = await getRun(runId).status;
 		return status === "pending" || status === "running";
 	} catch (error) {
+		if (WorkflowRunNotFoundError.is(error) || RunExpiredError.is(error)) return false;
 		console.error(`[run ${runId}] status unreadable`, error);
-		return false;
+		return true;
 	}
 }
 
@@ -26,7 +28,9 @@ export async function turnChildOpen(chatId: string): Promise<boolean> {
 	}
 	if (!runId) return false;
 	const open = await runIsOpen(runId);
-	if (!open) stores.chatStore.patchChat(chatId, { turnRunId: null });
+	if (!open && stores.chatStore.getChat(chatId)?.turnRunId === runId) {
+		stores.chatStore.patchChat(chatId, { turnRunId: null });
+	}
 	return open;
 }
 
@@ -36,6 +40,8 @@ export async function compactionChildOpen(chatId: string): Promise<boolean> {
 	if (!runId) return false;
 	if (process.env.NODE_ENV === "test") return true;
 	const open = await runIsOpen(runId);
-	if (!open) stores.chatStore.patchChat(chatId, { compactionRunId: null });
+	if (!open && stores.chatStore.getChat(chatId)?.compactionRunId === runId) {
+		stores.chatStore.patchChat(chatId, { compactionRunId: null });
+	}
 	return open;
 }

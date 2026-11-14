@@ -7,10 +7,9 @@ import { turnWorkflow } from "./turn-workflow.ts";
 
 /**
  * One chat's durable session. The token is `session:${chatId}`.
- * This is the only `"use workflow"` function in the session module.
  * Turn, job, extraction, and compaction runs are child workflows.
  */
-export async function sessionWorkflow(chatId: string, mode?: "force"): Promise<void> {
+export async function sessionWorkflow(chatId: string, mode?: "force", userId?: string): Promise<void> {
 	"use workflow";
 	console.log(`[session ${chatId}] open`, mode ?? "start");
 	const token = `session:${chatId}`;
@@ -25,7 +24,7 @@ export async function sessionWorkflow(chatId: string, mode?: "force"): Promise<v
 			const pulled = await pull();
 			if (pulled.done) return;
 			incoming = undefined;
-			const decision = await decideWakeStep(chatId, pulled.value);
+			const decision = await decideWakeStep(chatId, pulled.value, userId);
 			if (decision.action === "wait") continue;
 			if (decision.action === "grace") {
 				const next = pull();
@@ -33,14 +32,14 @@ export async function sessionWorkflow(chatId: string, mode?: "force"): Promise<v
 					sleep("750ms").then(() => "slept" as const),
 					next.then(() => "hint" as const),
 				]);
-				const after = await rereadAfterGraceStep(chatId, decision.messageIds);
+				const after = await rereadAfterGraceStep(chatId, decision.messageIds, userId);
 				let pending: Promise<IteratorResult<SessionHint>> | undefined = next;
 				if (winner === "hint") {
 					await next;
 					pending = undefined;
 					incoming = undefined;
 				}
-				if (after === "turn") await runTurn(chatId);
+				if (after === "turn") await runTurn(chatId, userId);
 				if (pending) {
 					const late = await Promise.race([
 						pending.then(() => "ready" as const),
@@ -53,7 +52,7 @@ export async function sessionWorkflow(chatId: string, mode?: "force"): Promise<v
 				}
 				continue;
 			}
-			await runTurn(chatId);
+			await runTurn(chatId, userId);
 		}
 	} catch (error) {
 		if (HookForceClaimedError.is(error)) return;
@@ -61,13 +60,13 @@ export async function sessionWorkflow(chatId: string, mode?: "force"): Promise<v
 	}
 }
 
-async function runTurn(chatId: string): Promise<void> {
-	const child = await start(turnWorkflow, [chatId]);
-	await rememberTurnRunStep(chatId, child.runId);
+async function runTurn(chatId: string, userId?: string): Promise<void> {
+	const child = await start(turnWorkflow, userId ? [chatId, userId] : [chatId]);
+	await rememberTurnRunStep(chatId, child.runId, userId);
 	try {
 		await child.returnValue;
 	} catch (error) {
 		console.error(`[session ${chatId}] turn child failed`, error);
-		await clearTurnRunStep(chatId);
+		await clearTurnRunStep(chatId, userId);
 	}
 }

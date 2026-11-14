@@ -822,10 +822,8 @@ export function recoverStaleJobs(): void {
 
 /** Hosted sweep: a running or pending workflow run is live. A finished or missing run is the orphan. */
 async function recoverHosted(): Promise<void> {
-	const { startJobWorkflow } = await import("./session/wake.ts");
+	const { startJobWorkflow, wakeSession } = await import("./session/wake.ts");
 	const { runIsOpen, turnChildOpen } = await import("./session/liveness.ts");
-	const { resumeHook } = await import("workflow/api");
-	const { sessionToken } = await import("./session/hints.ts");
 	try {
 		for (const chat of stores.chatStore.listChats()) {
 			for (const job of stores.jobStore.listJobs(chat.id)) {
@@ -834,12 +832,13 @@ async function recoverHosted(): Promise<void> {
 				if (await turnChildOpen(job.chatId)) continue;
 				const recovered = normalizeLegacyResult(job);
 				if (recovered.delivery?.status === "pending") {
-					await resumeHook(sessionToken(job.chatId), { kind: "job" });
+					await wakeSession(job.chatId, { kind: "job" });
 				} else if (job.kind === "demo" && job.status === "running" && !job.result) {
 					stores.jobStore.updateJob(job.id, { status: "error", error: "demo dispatch is off", activity: "failed" });
 				} else if (job.status === "running" && !job.result) {
 					stores.jobStore.updateJob(job.id, { activity: "recovering: re-running" });
 					if (job.kind === "visual") {
+						if (isJobLive(job.id)) continue;
 						const { jobRunner } = await import("./chat-handler.ts");
 						void jobRunner.runJob(job.id);
 					} else {

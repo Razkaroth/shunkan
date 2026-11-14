@@ -9,7 +9,7 @@ async function handleGET(_req?: Request) {
 }
 
 async function handleDELETE(request: Request) {
-	try { return Response.json(deleteSources(await readOrganizationAction(request))); }
+	try { return Response.json(await deleteSources(await readOrganizationAction(request))); }
 	catch (error) {
 		if (error instanceof SourceDeletionError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
 		if (error instanceof SourceOrganizationInputError) return Response.json({ error: error.message }, { status: 400 });

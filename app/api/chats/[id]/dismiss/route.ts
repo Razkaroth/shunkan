@@ -49,16 +49,19 @@ async function handlePOST(req: Request, ctx: { params: Promise<{ id: string }> }
 		return Response.json({ ok: true, parked: true }, { status: 202 });
 	}
 
+	const current = getChat(id);
+	if (!current) return Response.json({ error: "Unknown chat" }, { status: 404 });
+
 	let appends;
 	try {
-		appends = dismissAppends(chat, input);
+		appends = dismissAppends(current, input);
 	} catch (err) {
 		if (err instanceof ChatInputError) return Response.json({ error: err.message }, { status: 400 });
 		throw err;
 	}
 
 	// Write-ahead, turn-less: the record is the only state that moves.
-	const merged = [...chat.messages, ...appends];
+	const merged = [...current.messages, ...appends];
 	stores.chatStore.saveMessages(id, merged);
 	emit("record-changed", { chatId: id });
 	return Response.json({ ok: true });

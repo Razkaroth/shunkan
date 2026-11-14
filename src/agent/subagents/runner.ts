@@ -205,7 +205,7 @@ export function createJobRunner(deps: JobRunnerDeps): JobRunner {
 		// Demo dispatch is off before the model gate, the builder, and any failure steer.
 		if (job.kind === "demo") {
 			const stub = { model: { provider: "off", id: "off" } } as PiEngine;
-			await runDemoJob(jobId, stub, input, makeLoopContext(jobId, stub));
+			await runDemoJob(jobId, stub, input, { abortSignal: new AbortController().signal, onUsage: () => undefined });
 			return;
 		}
 		const run = KIND_RUNNERS[job.kind];
