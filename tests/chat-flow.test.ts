@@ -1073,24 +1073,22 @@ describe("the key-presence turn gate (provider-key interlude, 2026-09-25)", () =
 	// The gate's truth is env-first (keyValue): in tests process.env is the
 	// WHOLE truth (the throwaway data dir has no auth.json), so each test
 	// pins its provider's env var explicitly and restores it after.
-	it("a pinned provider whose key is gone refuses with 503 provider_key_missing — nothing lingers", async () => {
+	it("a pinned Together model with no provider key is not a key refusal — the unknown model id is unavailable", async () => {
 		const chat = chatStore.createChat("Test: keyless provider");
 		createdChats.push(chat.id);
 		const saved = process.env.TOGETHER_API_KEY;
 		delete process.env.TOGETHER_API_KEY;
 		try {
-			// The chat's own model override pins the provider — the same
-			// chain the strong slot rides. The gate fires BEFORE the engine
-			// build, so the fake model id never hits the catalog.
+			// Together authenticates at the gateway, so a missing TOGETHER_API_KEY
+			// is not provider_key_missing. The fake model id fails when the engine
+			// is built, still before beginTurn and the write-ahead persist.
 			chatStore.saveSettings(chat.id, { model: { provider: "together", id: "no-such-model" } });
 			const res = await handleChatRequest(post(chat.id, { type: "text", text: "teach me something" }), agentFactory(scriptedTeacher(defaultLesson).engine));
 
-			assert.equal(res.status, 503, "the key-presence gate refuses before beginTurn");
-			const body = (await res.json()) as { error: string; code: string; provider: string; slots: string[] };
-			assert.equal(body.code, "provider_key_missing");
-			assert.equal(body.provider, "together", "the envelope names whose key is gone");
-			assert.deepEqual(body.slots, ["strong"], "the conversation tier is the affected slot");
-			assert.equal(body.error, "No Together key is set — add one in Settings → Keys", "the human line names the provider");
+			assert.equal(res.status, 503, "the engine build refuses before beginTurn");
+			const body = (await res.json()) as { error: string; code?: string };
+			assert.equal(body.code, undefined);
+			assert.equal(body.error, "The selected model is unavailable.");
 			assert.equal(isTurnRunning(chat.id), false, "the refusal never registers a live turn");
 			assert.equal(chatStore.getChat(chat.id)!.messages.length, 0, "no write-ahead persist before the gate");
 		} finally {

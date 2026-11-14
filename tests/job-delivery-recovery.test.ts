@@ -74,7 +74,6 @@ after(() => fs.rmSync(directory, { recursive: true, force: true }));
 
 for (const [kind, input] of Object.entries({
 	research: { question: "Saved research question", context: "Saved context" },
-	demo: { title: "Fixture", brief: "Saved demo brief" },
 	visual: { brief: "Saved figure brief" },
 	pdf: { path: "fixture.pdf", question: "Saved PDF question" },
 })) test(`${kind}: dispatch saves input before spawn and does not overwrite it on repeated dispatch`, async () => {

@@ -95,7 +95,8 @@ function connectionBackgroundAllowed(provider: string): boolean {
  *  this check. */
 function admissionRefusal(provider: string, tier: ModelSlotName): ProviderKeyMissing | null {
 	if (gatewayRefusedProvider(provider)) return providerKeyMissingEnvelope(provider, [tier]);
-	if (gatewayAuthenticates(provider)) return null;
+	// Claude Code is a local CLI, not a gateway credential. A disabled opt-in still refuses.
+	if (gatewayAuthenticates(provider) && provider !== CLAUDE_CODE_PROVIDER) return null;
 	return providerKeyPresent(provider) ? null : providerKeyMissingEnvelope(provider, [tier]);
 }
 

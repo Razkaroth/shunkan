@@ -21,22 +21,22 @@ function previewVerb(options) {
 	return options?.public ? "funnel" : "serve";
 }
 
-/** @param {number} port @param {{ public?: boolean } | undefined} options */
+/** @param {number} port @param {{ public?: boolean }} [options] */
 export function serveCommand(port, options) {
 	return [previewVerb(options), "--bg", `--https=${port}`, String(port)];
 }
 
-/** @param {number} port @param {{ public?: boolean } | undefined} options */
+/** @param {number} port @param {{ public?: boolean }} [options] */
 export function offCommand(port, options) {
 	return [previewVerb(options), `--https=${port}`, String(port), "off"];
 }
 
-/** @param {number[]} ports @param {{ public?: boolean } | undefined} options */
+/** @param {number[]} ports @param {{ public?: boolean }} [options] */
 export function serveSlots(ports, options) {
 	return ports.map((port) => serveCommand(port, options));
 }
 
-/** @param {number[]} ports @param {{ public?: boolean } | undefined} options */
+/** @param {number[]} ports @param {{ public?: boolean }} [options] */
 export function offSlots(ports, options) {
 	return ports.map((port) => offCommand(port, options));
 }
