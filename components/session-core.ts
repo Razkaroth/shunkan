@@ -408,6 +408,9 @@ export class SessionModel {
 					// live stream dropped the marker until the settle sync.
 					const mid = message.id;
 					if (mid === undefined) return false;
+					// Adoption may already carry this durable message before its
+					// start/end is replayed. Adding it again would duplicate the wake.
+					if (this.base.some((m) => m.id === mid)) return false;
 					this.mutate(() => {
 						const idx = this.tail.findIndex((m) => m.id === mid);
 						this.tail =
@@ -954,7 +957,7 @@ export class SessionModel {
 		this.mutate(() => {
 			this.base = record;
 			this.forgetResolvedDrafts(record);
-			this.tail = this.tail.filter((m) => !absorbed(m, record));
+			this.tail = this.tail.filter((m) => !(typeof m.id === "string" && recordIds.has(m.id)) && !absorbed(m, record));
 		});
 	}
 

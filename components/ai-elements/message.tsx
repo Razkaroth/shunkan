@@ -31,6 +31,7 @@ import {
 } from "react";
 import remarkBreaks from "remark-breaks";
 import {
+  defaultRehypePlugins,
   Streamdown,
   type PluginConfig,
 } from "streamdown";
@@ -365,6 +366,12 @@ export const streamdownPlugins = {
 // separate sanitization/hardening and all other Markdown repairs stay enabled.
 export const streamdownRemend = { htmlTags: false };
 
+const [hardenPlugin, hardenOptions] = defaultRehypePlugins.harden as [unknown, Record<string, unknown>];
+export const streamdownRehypePlugins = Object.values({
+  ...defaultRehypePlugins,
+  harden: [hardenPlugin, { ...hardenOptions, allowedImagePrefixes: [] }],
+}) as NonNullable<MessageResponseProps["rehypePlugins"]>;
+
 export const MessageResponse = memo(
   ({ className, children, ...props }: MessageResponseProps) => {
     // Legacy backslash delimiters are converted in a single linear scan;
@@ -387,6 +394,7 @@ export const MessageResponse = memo(
         plugins={streamdownPlugins}
         remend={streamdownRemend}
         {...props}
+        rehypePlugins={streamdownRehypePlugins}
       >
         {content}
       </Streamdown>

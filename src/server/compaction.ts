@@ -28,7 +28,7 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Usage } from "@earendil-works/pi-ai";
+import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import {
 	activeCompactionOf,
 	buildCompactionPrompt,
@@ -117,6 +117,8 @@ export interface CompactionDeps {
 	/** The composed system prompt's token estimate (chars/4) — the
 	 *  projection the provider actually receives starts with it. */
 	systemPromptTokens: number;
+	/** When true, token estimates use the selected model's Responses reasoning floor. */
+	includeReasoning?: boolean;
 	/** Injectable summarizer (tests); default = the sub-agent one-shot. */
 	summarize?: Summarizer;
 	/** The app language the summary instructions are in (absent = English). */
@@ -168,10 +170,10 @@ export function effectiveThresholdTokens(settingTokens: number | undefined, cont
  *  carry), so the fallback path runs the plain heuristic over the
  *  CUT-HONORED projection (never the dropped span) plus the additive
  *  prompt term the anchor would have covered. */
-export function projectedContextTokens(messages: readonly LhMessage[], systemPromptTokens: number): number {
-	const est = estimateContextTokens(messages);
+export function projectedContextTokens(messages: readonly LhMessage[], systemPromptTokens: number, model?: Model<Api>): number {
+	const est = estimateContextTokens(messages, model);
 	if (est.lastUsageIndex !== null) return est.tokens;
-	return estimateTokens(toLlmMessages(messages as readonly AgentMessage[]) as unknown as readonly LhMessage[]) + systemPromptTokens;
+	return estimateTokens(toLlmMessages(messages as readonly AgentMessage[]) as unknown as readonly LhMessage[], model) + systemPromptTokens;
 }
 
 // ─── the compaction run ─────────────────────────────────────────────────────
@@ -184,10 +186,12 @@ async function compact(deps: CompactionDeps, chatId: string): Promise<void> {
 	const record = deps.chatStore.getChat(chatId);
 	if (!record) return;
 	const messages = record.messages;
-	const tokensBefore = projectedContextTokens(messages, deps.systemPromptTokens);
+	const end = messages.length;
+	const model = deps.includeReasoning ? deps.engine.model : undefined;
+	const tokensBefore = projectedContextTokens(messages, deps.systemPromptTokens, model);
 	if (tokensBefore <= deps.thresholdTokens) return; // settled beneath while we waited
 
-	const cut = compactionCutIndex(messages);
+	const cut = compactionCutIndex(messages, undefined, model);
 	if (cut <= 0 || cut >= messages.length) return; // no history can be dropped
 
 	// The previous compaction's kept boundary (chained compactions
@@ -246,7 +250,10 @@ async function compact(deps: CompactionDeps, chatId: string): Promise<void> {
 			at: new Date().toISOString(),
 		};
 		const marker = newCompactionMarker(trimmed, details);
-		deps.chatStore.saveMessages(chatId, [...messages, marker]);
+		const current = deps.chatStore.getChat(chatId);
+		if (!current) return;
+		const live = current.messages;
+		deps.chatStore.saveMessages(chatId, [...live.slice(0, end), marker, ...live.slice(end)]);
 		// The money channel: the summary is a real model call on the
 		// session's own engine — its usage keys to the marker (provenance:
 		// the transcript shows the compaction divider at the marker).

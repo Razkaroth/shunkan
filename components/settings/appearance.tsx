@@ -31,6 +31,7 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 		fontFamily: delta?.fontFamily ?? f.fontFamily,
 		proseFontSize: delta?.proseFontSize ?? f.proseFontSize,
 		sessionNameSerif: delta?.sessionNameSerif ?? f.sessionNameSerif,
+		codeLigatures: delta?.codeLigatures ?? f.codeLigatures,
 		textWidth: delta?.textWidth ?? f.textWidth,
 		constrainMedia: delta?.constrainMedia ?? f.constrainMedia,
 		mdRendering: {
@@ -102,6 +103,7 @@ export function appearanceVars(a: ReturnType<typeof resolveAppearance>): Record<
 	vars["--lh-media-table-inset"] = a.constrainMedia || a.textWidth === "full" ? "0px" : "auto";
 	// Markdown rendering: heading weight + the emphasis inks (the vars
 	// were built "ready for the settings UI").
+	vars["--lh-code-ligatures"] = a.codeLigatures ? "normal" : "none";
 	vars["--lh-heading-weight"] = String(a.mdRendering.headingWeight);
 	if (a.mdRendering.boldColor !== null) vars["--lh-ink-strong"] = a.mdRendering.boldColor;
 	if (a.mdRendering.italicColor !== null) vars["--lh-ink-italic"] = a.mdRendering.italicColor;
@@ -150,6 +152,14 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 	// has ever set is tracked; names absent from the new set are removed so
 	// the factory stylesheet value returns.
 	const appliedNamesRef = useRef<Set<string>>(new Set());
+	useEffect(() => {
+		const root = document.documentElement;
+		const flags = delta?.richCode;
+		root.dataset.richChemical = flags?.chemicalStructures ? "1" : "";
+		root.dataset.richMusic = flags?.musicalNotation ? "1" : "";
+		root.dataset.richDiagrams = flags?.technicalDiagrams ? "1" : "";
+	}, [delta]);
+
 	useEffect(() => {
 		if (appliedRef.current === key) return;
 		appliedRef.current = key;

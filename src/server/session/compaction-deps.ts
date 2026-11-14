@@ -37,6 +37,7 @@ export function compactionDeps(chatId: string): CompactionDeps | null {
 		modelId,
 		kind: record.kind === "practice" ? "practice" : hasProbeDone(record.messages) ? "teach" : "probe",
 		thresholdTokens: effectiveThresholdTokens(fresh.compaction?.thresholdTokens, catalogContextLimits().get(modelId)),
+		includeReasoning: fresh.compaction?.includeReasoning === true,
 		systemPromptTokens: Math.ceil(composeInstructions(record.kind === "practice" ? "practice" : "teacher", undefined, fresh.general.language).length / 4),
 		language: fresh.general.language,
 	};

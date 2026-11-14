@@ -68,6 +68,8 @@ export interface ChatRecord {
 	extractionRunId?: string;
 	/** Compaction child run. Absence means no run. The id is the single flight. */
 	compactionRunId?: string;
+	/** Durable clarification threads. Optional: older records omit it. */
+	sideChats?: SideChatThread[];
 }
 
 /** A patch for the run ids and parked steers. Null clears the field. */
@@ -81,6 +83,39 @@ export interface ChatRunPatch {
 
 /** The chat record format this build writes and understands. */
 export const CURRENT_CHAT_VERSION = 1;
+
+/** Where a side thread sits: one teacher message and the block the learner selected. */
+export interface SideChatAnchor {
+	messageId: string;
+	partId: string;
+	blockIndex: number;
+	blockText: string;
+}
+
+export interface SideChatMessage {
+	id: string;
+	role: "user" | "assistant";
+	text: string;
+	quotes?: string[];
+	quoteCitations?: string[];
+	at: string;
+	model?: string;
+	requestId?: string;
+	stopped?: boolean;
+	pending?: boolean;
+	error?: string;
+}
+
+/** One side thread. `runId` is the workflow child that is answering it. */
+export interface SideChatThread {
+	id: string;
+	anchor: SideChatAnchor;
+	open: boolean;
+	createdAt: string;
+	messages: SideChatMessage[];
+	runId?: string;
+	contextSnapshot?: SideChatMessage[];
+}
 
 /** The conversation agents' runtime model choice (model-control wave,
  *  2026-09-12): a per-chat override of config.ts's pinned prober/teacher

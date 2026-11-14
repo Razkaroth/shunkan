@@ -131,7 +131,8 @@ describe("appearanceVars — the mapping the provider applies", () => {
 	it("sessionNameSerif false alone: titles move, nothing else does", () => {
 		const vars = appearanceVars(resolveAppearance({ sessionNameSerif: false }));
 		assert.equal(vars["--font-title"], "var(--font-prose)");
-		assert.equal(Object.keys(vars).length, 8, "font-title + the always-applied prose-size, heading-weight, and five measure tokens");
+		assert.equal(vars["--lh-code-ligatures"], "none");
+		assert.equal(Object.keys(vars).length, 9, "font-title + the always-applied prose-size, ligatures, heading-weight, and five measure tokens");
 	});
 });
 
@@ -281,6 +282,9 @@ describe("classifyKeys — the Keys section's two-group projection", () => {
 			"DEEPGRAM_API_KEY",
 			"TAVILY_API_KEY",
 			"BRAVE_API_KEY",
+			"EXA_API_KEY",
+			"FIRECRAWL_API_KEY",
+			"OLLAMA_API_KEY",
 		]);
 		assert.ok(out.toolRows[0]!.present);
 		assert.ok(!out.toolRows[1]!.present);
@@ -372,9 +376,9 @@ describe("sectionedSegments — the prompts overhaul (2026-09-26)", () => {
 		],
 	};
 
-	it("the owner's ruled order: Teacher, Prober, Shared — Shared last", () => {
+	it("the owner's ruled order: Teacher, Prober, Practice, Shared — Shared last", () => {
 		const ids = sectionedSegments(view).map((s) => s.id);
-		assert.deepEqual(ids, ["teacher", "prober", "shared"]);
+		assert.deepEqual(ids, ["teacher", "prober", "practice", "shared"]);
 	});
 
 	it("shared chunks appear exactly ONCE across all sections (no duplication)", () => {
@@ -386,14 +390,14 @@ describe("sectionedSegments — the prompts overhaul (2026-09-26)", () => {
 	});
 
 	it("the Shared section holds the shared chunks in assembly order; the agents' sections hold their own", () => {
-		const [teacher, prober, shared] = sectionedSegments(view);
-		assert.ok(teacher && prober && shared, "all three sections present");
+		const [teacher, prober, practice, shared] = sectionedSegments(view);
+		assert.ok(teacher && prober && practice && shared, "all four sections present");
 		assert.deepEqual(teacher.segments.map((s) => s.path), ["teacher/05-method.md", "teacher/10-planning.md"]);
 		assert.deepEqual(prober.segments.map((s) => s.path), ["prober/10-probe-doctrine.md"]);
+		assert.deepEqual(practice.segments, []);
 		// assembly order: the base file first, then the shared fragments
 		assert.deepEqual(shared.segments.map((s) => s.path), ["system-prompt.md", "shared/10-personality.md"]);
-		// the Shared header carries the one hint that earns its place
-		assert.equal(shared.hint, "Used by both agents");
+		assert.equal(shared.segments[0]?.usageHint, "Used by Teacher and Prober");
 		assert.equal(teacher.hint, undefined);
 	});
 

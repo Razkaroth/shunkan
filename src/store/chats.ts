@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { PATHS } from "../../config.ts";
 import { emit } from "../core/events.ts";
 import type { ChatStore } from "../core/ports.ts";
-import type { ChatRecord, ChatRunPatch, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, TurnUsage } from "../core/contracts.ts";
+import type { ChatRecord, ChatRunPatch, ChatSettings, ChatSummary, ExtractionRunUsage, PlanTree, SideChatThread, TurnUsage } from "../core/contracts.ts";
 import { CURRENT_CHAT_VERSION } from "../core/contracts.ts";
 import type { LhMessage } from "../core/native-messages.ts";
 import { activeProblemOf, danglingQuestionOf } from "../core/native-messages.ts";
@@ -162,6 +162,17 @@ function appendTurnUsage(id: string, entry: TurnUsage): void {
 /** Append one extraction-run usage entry to the record's extractions
  * log — idempotent per startedAt: a retry that reaches the append twice
  * (abort replays) does not double-count spend. */
+function updateSideChats(id: string, update: (threads: SideChatThread[]) => SideChatThread[]): ChatRecord | null {
+	const record = getChat(id);
+	if (!record) return null;
+	const next = update([...(record.sideChats ?? [])]);
+	if (next.length > 0) record.sideChats = next;
+	else delete record.sideChats;
+	record.updatedAt = new Date().toISOString();
+	writeChat(record);
+	return record;
+}
+
 function appendExtractionUsage(id: string, entry: ExtractionRunUsage): void {
 	const record = getChat(id);
 	if (!record) throw new Error(`Chat not found: ${id}`);
@@ -232,4 +243,5 @@ export const chatStore: ChatStore = {
 	deleteChat,
 	appendTurnUsage,
 	appendExtractionUsage,
+	updateSideChats,
 };
