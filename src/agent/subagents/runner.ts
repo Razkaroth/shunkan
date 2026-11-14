@@ -12,6 +12,7 @@ import {
 	type JobUsage,
 	type PdfResult,
 	type PdfToolInput,
+	isWebSourceUrl,
 	type ResearchResult,
 	type ResearchToolInput,
 	type SteerMessage,
@@ -542,7 +543,7 @@ function hostOf(url: string | undefined): string {
 }
 
 /** Sources for the result: markdown links cited in the brief, else fetched URLs. */
-function parseSources(brief: string, fetchedUrls: string[]): ResearchResult["sources"] {
+export function parseSources(brief: string, fetchedUrls: string[]): ResearchResult["sources"] {
 	const sources: ResearchResult["sources"] = [];
 	const seen = new Set<string>();
 	for (const match of brief.matchAll(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g)) {
@@ -554,7 +555,7 @@ function parseSources(brief: string, fetchedUrls: string[]): ResearchResult["sou
 	}
 	if (sources.length === 0) {
 		for (const url of fetchedUrls) {
-			if (seen.has(url)) continue;
+			if (!isWebSourceUrl(url) || seen.has(url)) continue;
 			seen.add(url);
 			sources.push({ title: hostOf(url), url });
 		}

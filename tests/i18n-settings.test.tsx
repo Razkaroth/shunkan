@@ -71,8 +71,8 @@ describe("settings sections under the Spanish provider", () => {
 		assert.equal(keyStatusLine(unset, "es"), "sin configurar");
 		assert.equal(keyStatusLine(unset), "not set");
 		const view = { prober: [], teacher: [] };
-		assert.deepEqual(sectionedSegments(view, "es").map((s) => s.label), ["Profesor", "Examinador", "Compartidas"]);
-		assert.deepEqual(sectionedSegments(view).map((s) => s.label), ["Teacher", "Prober", "Shared"]);
+		assert.deepEqual(sectionedSegments(view, "es").map((s) => s.label), ["Profesor", "Examinador", "Práctica", "Compartidas"]);
+		assert.deepEqual(sectionedSegments(view).map((s) => s.label), ["Teacher", "Prober", "Practice", "Shared"]);
 	});
 });
 

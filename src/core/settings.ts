@@ -33,7 +33,7 @@ import { AUTH_PROVIDER_KEYS } from "./auth-keys.ts";
 import { CLAUDE_CODE_PROVIDER } from "./contracts/claude-code.ts";
 import type { ModelRole } from "../../config.ts";
 import type { ChatSettings } from "./contracts/chat.ts";
-import type { SearchEngineId } from "./search.ts";
+import { isSearchEngineId, type SearchEngineId } from "./search.ts";
 import { isAppLanguage, type AppLanguage } from "./i18n.ts";
 import { isDictationLanguage, type DictationLanguage } from "./dictation.ts";
 
@@ -418,6 +418,8 @@ export interface AppearanceSettings {
 	proseFontSize?: number;
 	/** Session names in CMU Serif (default true — today's look). */
 	sessionNameSerif?: boolean;
+	/** Code ligatures in code blocks and inline code. Default off. */
+	codeLigatures?: boolean;
 	/** Chat text measure, centered in the transcript column (default xl —
 	 *  widescreen support). */
 	textWidth?: TextWidth;
@@ -488,6 +490,8 @@ export interface GraphSettings {
  */
 export interface CompactionSettings {
 	thresholdTokens?: number;
+	/** Opt-in floor for OpenAI Responses reasoning in token estimates. Default off. */
+	includeReasoning?: boolean;
 }
 
 /** THE record. Every section optional (delta); unknown top-level keys are
@@ -524,6 +528,7 @@ export interface FactorySettings {
 		fontFamily: string | null;
 		proseFontSize: number;
 		sessionNameSerif: boolean;
+		codeLigatures: boolean;
 		textWidth: TextWidth;
 		constrainMedia: boolean;
 		mdRendering: {
@@ -546,12 +551,13 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
 		sessionNameSerif: true,
+		codeLigatures: false,
 		textWidth: "xl",
 		constrainMedia: false,
 		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
-	compaction: { thresholdTokens: 150_000 },
+	compaction: { thresholdTokens: 150_000, includeReasoning: false },
 };
 
 /** The chunk budget's validated floor (GraphSettings.extractionChunkTokens
@@ -743,7 +749,7 @@ function sanitizeAgent(raw: Record<string, unknown>): AgentSettings {
 	// record, it just loses the pin and auto-detection resumes).
 	if (raw.search !== null && typeof raw.search === "object" && !Array.isArray(raw.search)) {
 		const engine = (raw.search as Record<string, unknown>).engine;
-		if (engine === "tavily" || engine === "brave") out.search = { engine };
+		if (isSearchEngineId(engine)) out.search = { engine };
 	}
 	// Prober graph tools (wave 7): its own agent-section subsection —
 	// lenient read side (a bad shape drops the key and the default ON
@@ -780,6 +786,8 @@ function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 	}
 	const sessionNameSerif = boolOrDrop(raw.sessionNameSerif);
 	if (sessionNameSerif !== undefined) out.sessionNameSerif = sessionNameSerif;
+	const codeLigatures = boolOrDrop(raw.codeLigatures);
+	if (codeLigatures !== undefined) out.codeLigatures = codeLigatures;
 	if (isTextWidth(raw.textWidth)) out.textWidth = raw.textWidth;
 	const constrainMedia = boolOrDrop(raw.constrainMedia);
 	if (constrainMedia !== undefined) out.constrainMedia = constrainMedia;
@@ -825,6 +833,8 @@ function sanitizeCompaction(raw: Record<string, unknown>): CompactionSettings {
 	if (typeof rawTokens === "number" && Number.isFinite(rawTokens) && rawTokens > 0) {
 		out.thresholdTokens = Math.max(COMPACTION_THRESHOLD_FLOOR, Math.floor(rawTokens));
 	}
+	const includeReasoning = boolOrDrop(raw.includeReasoning);
+	if (includeReasoning !== undefined) out.includeReasoning = includeReasoning;
 	return out;
 }
 

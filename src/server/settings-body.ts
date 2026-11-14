@@ -38,6 +38,7 @@ import {
 } from "../core/settings.ts";
 import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
 import { isAppLanguage } from "../core/i18n.ts";
+import { isSearchEngineId } from "../core/search.ts";
 import { isDictationLanguage } from "../core/dictation.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
@@ -206,8 +207,8 @@ export function parseAgentSettingsBody(body: unknown): SettingsBodyResult<AgentS
 		const search = asRecord(raw.search);
 		if (!search) return { ok: false, error: "search must be an object" };
 		if (search.engine !== undefined) {
-			if (search.engine !== "tavily" && search.engine !== "brave") {
-				return { ok: false, error: 'search.engine must be "tavily" or "brave"' };
+			if (!isSearchEngineId(search.engine)) {
+				return { ok: false, error: 'search.engine must be "tavily", "brave", "exa", "firecrawl", or "ollama"' };
 			}
 			settings.search = { engine: search.engine };
 		}
@@ -275,6 +276,12 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 			return { ok: false, error: "sessionNameSerif must be a boolean" };
 		}
 		settings.sessionNameSerif = raw.sessionNameSerif;
+	}
+	if (raw.codeLigatures !== undefined) {
+		if (typeof raw.codeLigatures !== "boolean") {
+			return { ok: false, error: "codeLigatures must be a boolean" };
+		}
+		settings.codeLigatures = raw.codeLigatures;
 	}
 	if (raw.textWidth !== undefined) {
 		if (!isTextWidth(raw.textWidth)) {
@@ -420,6 +427,12 @@ export function parseCompactionSettingsBody(body: unknown): SettingsBodyResult<C
 			};
 		}
 		settings.thresholdTokens = floored;
+	}
+	if (raw.includeReasoning !== undefined) {
+		if (typeof raw.includeReasoning !== "boolean") {
+			return { ok: false, error: "includeReasoning must be true or false" };
+		}
+		settings.includeReasoning = raw.includeReasoning;
 	}
 	return { ok: true, settings };
 }

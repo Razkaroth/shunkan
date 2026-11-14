@@ -755,10 +755,11 @@ describe("visual maker (fake model + fake headless)", () => {
 		assert.match(result.notes ?? "", /^FAILED: the maker never wrote an SVG/);
 	});
 
-	it("fails with a clear message when no Chrome is available", async () => {
+	it("runs the model when Chrome is missing and does not fail on Chrome", async () => {
 		const result = await runVisualMaker({ brief: "b" }, { engine: scriptedModel([{ text: "x" }]), headless: noChromeHeadless() });
 		assert.equal(result.svg, "");
-		assert.match(result.notes ?? "", /^FAILED: .*Chrome/);
+		assert.match(result.notes ?? "", /^FAILED: the maker never wrote an SVG/);
+		assert.doesNotMatch(result.notes ?? "", /Chrome/);
 	});
 });
 

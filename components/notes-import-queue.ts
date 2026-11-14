@@ -61,13 +61,37 @@ export function createNotesImportQueue(post: (files: readonly File[], t: Transla
 			if (files.length === 0) return;
 			if (translate) t = translate;
 			if (!snapshot.importing) { failures.clear(); notices.clear(); sequence = 0; }
+			const unsupported = new Map<string, number>();
+			const unsafe: number[] = [];
+			let firstUnsupported = -1;
+			let firstUnsafe = -1;
+			const extensionLabel = (name: string) => {
+				const base = name.split(/[/\\]/).pop() ?? name;
+				const dot = base.lastIndexOf(".");
+				return dot > 0 ? base.slice(dot).toLowerCase() : t("graph.import.noExtension");
+			};
+			const hiddenInFolder = (file: File) => file.webkitRelativePath.split("/").slice(1).some((part) => part.startsWith("."));
 			for (const file of files) {
 				const index = sequence++;
 				const path = notesPath(file);
-				if (file.webkitRelativePath && file.name === ".DS_Store") continue;
-				if (!IMPORT_EXTENSIONS.test(path) || !validNotesPath(path, file.name)) failures.set(index, `${path}: ${t("graph.import.unsupported")}`);
-				else if (file.size > MAX_IMPORT_BYTES) failures.set(index, `${path}: ${t("graph.import.tooBig")}`);
+				if (file.webkitRelativePath && hiddenInFolder(file)) continue;
+				if (!validNotesPath(path, file.name)) {
+					if (firstUnsafe < 0) firstUnsafe = index;
+					unsafe.push(index);
+				} else if (!IMPORT_EXTENSIONS.test(file.name)) {
+					const label = extensionLabel(file.name);
+					unsupported.set(label, (unsupported.get(label) ?? 0) + 1);
+					if (firstUnsupported < 0) firstUnsupported = index;
+				} else if (file.size > MAX_IMPORT_BYTES) failures.set(index, `${path}: ${t("graph.import.tooBig")}`);
 				else pending.push({ file, index });
+			}
+			if (unsupported.size > 0) {
+				const count = [...unsupported.values()].reduce((sum, n) => sum + n, 0);
+				const types = [...unsupported.keys()].sort().join(", ");
+				failures.set(firstUnsupported, t(count === 1 ? "graph.import.skippedType.one" : "graph.import.skippedType.many", { count, types }));
+			}
+			if (unsafe.length > 0) {
+				failures.set(firstUnsafe, t(unsafe.length === 1 ? "graph.import.skippedName.one" : "graph.import.skippedName.many", { count: unsafe.length }));
 			}
 			const hadWork = active > 0 || pending.length > 0;
 			pump();

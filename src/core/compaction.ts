@@ -40,7 +40,7 @@ import type { LhMessage, LhMarkerMessage } from "./native-messages.ts";
 import { newMessageId } from "./native-messages.ts";
 import { pickLocalized, type AppLanguage, type Localized } from "./i18n.ts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage, SystemMessage } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ToolResultMessage, SystemMessage } from "@earendil-works/pi-ai";
 
 // ─── constants (the tunables, owner-approved) ────────────────────────────────
 
@@ -83,21 +83,35 @@ export function calculateContextTokens(usage: {
  * assistants, content text plus a fixed image allowance for other roles. NEVER JSON.stringify of the
  * whole message — record scaffolding (ids, usage, responseId, app-side
  * details, escaped quotes/backslashes) inflates ~3x (measured on the
- * 2026-10-05 relational-databases incident: 84k estimated vs ~30k real). */
-export function estimateMessageTokens(message: LhMessage | AgentMessage): number {
+ * 2026-10-05 relational-databases incident: 84k estimated vs ~30k real).
+ * Supplying a model opts into the same-model Responses output-usage floor;
+ * omitting it preserves the original heuristic. */
+export function estimateMessageTokens(message: LhMessage | AgentMessage, model?: Model<Api>): number {
 	const content: unknown = (message as { content?: unknown }).content;
 	let chars = 0;
 	if ((message as { role?: string }).role === "assistant") {
+		let hasSignedThinking = false;
 		for (const block of (Array.isArray(content) ? content : []) as Array<{
 			type: string;
 			text?: string;
 			thinking?: string;
+			thinkingSignature?: string;
 			name?: string;
 			arguments?: unknown;
 		}>) {
 			if (block.type === "text") chars += block.text?.length ?? 0;
-			else if (block.type === "thinking") chars += block.thinking?.length ?? 0;
-			else if (block.type === "toolCall") chars += (block.name?.length ?? 0) + JSON.stringify(block.arguments ?? {}).length;
+			else if (block.type === "thinking") {
+				chars += block.thinking?.length ?? 0;
+				hasSignedThinking ||= typeof block.thinkingSignature === "string" && block.thinkingSignature.length > 0;
+			} else if (block.type === "toolCall") chars += (block.name?.length ?? 0) + JSON.stringify(block.arguments ?? {}).length;
+		}
+		const assistant = message as AssistantMessage;
+		const output = assistant.usage?.output;
+		if (model?.api === "openai-responses" && assistant.api === model.api &&
+			assistant.provider === model.provider && assistant.model === model.id && hasSignedThinking &&
+			assistant.stopReason !== "error" && assistant.stopReason !== "aborted" &&
+			typeof output === "number" && Number.isSafeInteger(output) && output > 0) {
+			return Math.max(Math.ceil(chars / 4), output);
 		}
 	} else {
 		chars += textCharsOfContent(content);
@@ -167,24 +181,25 @@ export interface ContextTokenEstimate {
  * tripled the true context and fired a 30k session at an 80k threshold). */
 export function estimateContextTokens(
 	messages: readonly (LhMessage | AgentMessage)[],
+	model?: Model<Api>,
 ): ContextTokenEstimate {
 	const anchor = lastAssistantUsageIndex(messages);
 	if (anchor === null) {
 		let trailing = 0;
-		for (const m of messages) trailing += estimateMessageTokens(m);
+		for (const m of messages) trailing += estimateMessageTokens(m, model);
 		return { tokens: trailing, usageTokens: 0, trailingTokens: trailing, lastUsageIndex: null };
 	}
 	const anchored = messages[anchor]! as AssistantMessage;
 	const usageTokens = calculateContextTokens(anchored.usage as Parameters<typeof calculateContextTokens>[0]);
 	let trailing = 0;
-	for (let i = anchor + 1; i < messages.length; i++) trailing += estimateMessageTokens(messages[i]!);
+	for (let i = anchor + 1; i < messages.length; i++) trailing += estimateMessageTokens(messages[i]!, model);
 	return { tokens: usageTokens + trailing, usageTokens, trailingTokens: trailing, lastUsageIndex: anchor };
 }
 
 /** Estimate a whole message list (the plain heuristic — cut-walk use). */
-export function estimateTokens(messages: readonly (LhMessage | AgentMessage)[]): number {
+export function estimateTokens(messages: readonly (LhMessage | AgentMessage)[], model?: Model<Api>): number {
 	let total = 0;
-	for (const m of messages) total += estimateMessageTokens(m);
+	for (const m of messages) total += estimateMessageTokens(m, model);
 	return total;
 }
 
@@ -207,7 +222,7 @@ function cutMessage(message: LhMessage): LhMessage | null {
  * Returns the first kept record index; a zero/no-progress cut drops nothing.
  * Keep this and estimateMessageTokens aligned deliberately when upgrading Pi.
  */
-export function compactionCutIndex(messages: readonly LhMessage[], keepRecentTokens = KEEP_RECENT_TOKENS): number {
+export function compactionCutIndex(messages: readonly LhMessage[], keepRecentTokens = KEEP_RECENT_TOKENS, model?: Model<Api>): number {
 	const previous = activeCompactionOf(messages);
 	const previousKept = previous ? keptIndexFor(messages, previous) : -1;
 	const start = Math.max(0, previousKept);
@@ -221,7 +236,7 @@ export function compactionCutIndex(messages: readonly LhMessage[], keepRecentTok
 	let accumulated = 0;
 	for (let i = messages.length - 1; i >= start; i--) {
 		const message = cutMessage(messages[i]!);
-		const tokens = message ? estimateMessageTokens(message) : 0;
+		const tokens = message ? estimateMessageTokens(message, model) : 0;
 		if (tokens === 0) continue;
 		accumulated += tokens;
 		if (accumulated >= keepRecentTokens) {

@@ -138,11 +138,6 @@ export async function runVisualMaker(input: VisualMakerInput, opts: VisualMakerO
 	const brief = input.brief.trim() || "(no brief)";
 	const maxIterations = opts.maxIterations ?? 8;
 
-	const reason = headless.unavailableReason();
-	if (reason) {
-		return { svg: "", notes: `FAILED: ${reason}` };
-	}
-
 	const tools = createVisualTools();
 	const toolDeclarations = Object.values(tools);
 	const engine = opts.engine ?? piEngineFor("visualMaker");

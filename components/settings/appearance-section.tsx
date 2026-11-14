@@ -338,6 +338,14 @@ export function AppearanceSection({
 					onChange={(on) => onSectionChange({ ...appearance, sessionNameSerif: on })}
 				/>
 			</SettingsRow>
+			<SettingsRow label={t("settings.appearance.codeLigatures")} testid="row-code-ligatures">
+				<Toggle
+					checked={appearance?.codeLigatures ?? false}
+					label={t("settings.appearance.codeLigatures.aria")}
+					testid="toggle-code-ligatures"
+					onChange={(on) => onSectionChange({ ...appearance, codeLigatures: on })}
+				/>
+			</SettingsRow>
 			<SettingsRow label={t("settings.appearance.headingWeight")} hint={`${resolved.mdRendering.headingWeight}`} testid="row-heading-weight">
 				<CommitInput
 					type="number"

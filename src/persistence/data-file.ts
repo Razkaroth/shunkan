@@ -7,6 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { removeLeftoverTemps, writeFileAtomicSync } from "./atomic-write.ts";
 import {
 	recordDel,
 	recordDelPrefix,
@@ -112,13 +113,19 @@ export function readFileSync(file: string, encoding?: BufferEncoding): string {
 	return fs.readFileSync(file, encoding ?? "utf8");
 }
 
+function atomicMode(options?: fs.WriteFileOptions): { mode?: number } | undefined {
+	if (!options || typeof options === "string" || typeof options.mode !== "number") return undefined;
+	return { mode: options.mode };
+}
+
 export function writeFileSync(file: string, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions): void {
 	const key = logicalKey(file);
 	if (key) {
 		recordPut(key, textOf(data), kindFor(key));
 		return;
 	}
-	fs.writeFileSync(file, data, options);
+	const bytes = typeof data === "string" ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+	writeFileAtomicSync(file, bytes, atomicMode(options));
 }
 
 export function appendFileSync(file: string, data: string, encoding?: BufferEncoding): void {
@@ -167,6 +174,7 @@ export function unlinkSync(file: string): void {
 		return;
 	}
 	fs.unlinkSync(file);
+	removeLeftoverTemps(file);
 }
 
 export function rmSync(target: string, options?: fs.RmOptions): void {
@@ -179,6 +187,7 @@ export function rmSync(target: string, options?: fs.RmOptions): void {
 		return;
 	}
 	fs.rmSync(target, options);
+	if (!options?.recursive) removeLeftoverTemps(target);
 }
 
 export function chmodSync(file: string, mode: fs.Mode): void {

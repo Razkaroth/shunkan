@@ -31,6 +31,7 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 		fontFamily: delta?.fontFamily ?? f.fontFamily,
 		proseFontSize: delta?.proseFontSize ?? f.proseFontSize,
 		sessionNameSerif: delta?.sessionNameSerif ?? f.sessionNameSerif,
+		codeLigatures: delta?.codeLigatures ?? f.codeLigatures,
 		textWidth: delta?.textWidth ?? f.textWidth,
 		constrainMedia: delta?.constrainMedia ?? f.constrainMedia,
 		mdRendering: {
@@ -102,6 +103,7 @@ export function appearanceVars(a: ReturnType<typeof resolveAppearance>): Record<
 	vars["--lh-media-table-inset"] = a.constrainMedia || a.textWidth === "full" ? "0px" : "auto";
 	// Markdown rendering: heading weight + the emphasis inks (the vars
 	// were built "ready for the settings UI").
+	vars["--lh-code-ligatures"] = a.codeLigatures ? "normal" : "none";
 	vars["--lh-heading-weight"] = String(a.mdRendering.headingWeight);
 	if (a.mdRendering.boldColor !== null) vars["--lh-ink-strong"] = a.mdRendering.boldColor;
 	if (a.mdRendering.italicColor !== null) vars["--lh-ink-italic"] = a.mdRendering.italicColor;

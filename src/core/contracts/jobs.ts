@@ -200,6 +200,16 @@ export interface ResearchResult {
 	sources: { title: string; url: string }[];
 }
 
+/** Research source links are http or https only. */
+export function isWebSourceUrl(url: string): boolean {
+	try {
+		const protocol = new URL(url).protocol;
+		return protocol === "http:" || protocol === "https:";
+	} catch {
+		return false;
+	}
+}
+
 export interface DemoToolInput {
 	title: string;
 	/** Precise brief: concept, parameters/interactions, visual style. */
