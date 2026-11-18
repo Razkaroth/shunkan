@@ -28,12 +28,13 @@ it("route keeps three-worker batching, request positions and mixed per-file outc
 			await new Promise((resolve) => setTimeout(resolve, filePath === "slow.md" ? 25 : 1));
 			if (filePath === "models.md") throw new ModelsNotConfiguredError(["cheap"]);
 			if (filePath === "key.md") throw new ProviderKeyMissingError("openai", ["cheap"]);
-			if (["failed", "partial", "aborted", "busy"].includes(filePath)) throw new NotesImportError(filePath as NotesImportError["outcome"], { nodes: 2, chains: 1 }, `synthetic ${filePath}`);
+			const outcome = filePath.replace(/\.md$/, "");
+			if (["failed", "partial", "aborted", "busy"].includes(outcome)) throw new NotesImportError(outcome as NotesImportError["outcome"], { nodes: 2, chains: 1 }, `synthetic ${outcome}`);
 			if (filePath === "unknown.md") throw new Error("synthetic unknown error");
 			return { nodes: 0, chains: 0 };
 		} finally { active--; }
 	};
-	const names = ["slow.md", "same.md", "same.md", "failed", "partial", "aborted", "busy", "models.md", "key.md", "unknown.md"];
+	const names = ["slow.md", "same.md", "same.md", "failed.md", "partial.md", "aborted.md", "busy.md", "models.md", "key.md", "unknown.md"];
 	const response = await POST(request(names));
 	assert.equal(response.status, 200);
 	const { results } = await response.json();
@@ -43,8 +44,8 @@ it("route keeps three-worker batching, request positions and mixed per-file outc
 	for (const [requestIndex, filePath] of names.entries()) {
 		const result = results.find((r: { requestIndex: number }) => r.requestIndex === requestIndex);
 		assert.equal(result.filePath, filePath);
-		if (["failed", "partial", "aborted", "busy"].includes(filePath)) {
-			assert.equal(result.outcome, filePath);
+		if (["failed.md", "partial.md", "aborted.md", "busy.md"].includes(filePath)) {
+			assert.equal(result.outcome, filePath.replace(/\.md$/, ""));
 			assert.equal(result.ok, false);
 			assert.deepEqual(result.stats, { nodes: 2, chains: 1 });
 		} else if (["slow.md", "same.md"].includes(filePath)) {
@@ -191,7 +192,7 @@ for (const split of [false, true]) it(`server refuses actual file bytes over 25 
 it("server accepts exactly 25 MiB of files with multipart overhead below 26 MiB", async () => {
 	let received = 0;
 	extraction.importNotes = async ({ text }) => { received = text.length; return { nodes: 0, chains: 0 }; };
-	const response = await POST(upload([{ name: "boundary.txt", bytes: new Uint8Array(MAX_IMPORT_BYTES) }]));
+	const response = await POST(upload([{ name: "boundary.txt", bytes: Buffer.alloc(MAX_IMPORT_BYTES, 0x61) }]));
 	assert.equal(response.status, 200);
 	assert.equal(received, MAX_IMPORT_BYTES);
 	assert.equal((await response.json()).results[0].outcome, "completed");

@@ -182,12 +182,15 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 		}
 
 		if (role === "user") {
-			const content = m.content as string | Array<{ type: string; text?: string }>;
-			const texts =
-				typeof content === "string"
-					? [content]
-					: content.filter((c) => c.type === "text").map((c) => (c as { text: string }).text);
-			out.push({ id: m.id, role: "user", parts: texts.map(textPart) });
+			const content = m.content as string | Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+			const parts = typeof content === "string"
+				? [textPart(content)]
+				: content.flatMap((part) => {
+					if (part.type === "text") return part.text ? [textPart(part.text)] : [];
+					if (part.type === "image" && part.data && part.mimeType) return [{ type: "image", data: part.data, mimeType: part.mimeType, state: "done" }];
+					return [];
+				});
+			out.push({ id: m.id, role: "user", parts });
 			continue;
 		}
 
@@ -455,6 +458,8 @@ function projectMarker(marker: LhMarkerMessage, out: LhViewMessage[]): void {
 		case "problem-dismissed":
 			// UI-only (the ask-style dismissal): the synthesized conclude
 			// pair — which rides the NEXT input — carries the record's face.
+			return;
+		case "side-question":
 			return;
 		case "compaction": {
 			// THE MOMENT DIVIDER (owner round 14): minimal centered small

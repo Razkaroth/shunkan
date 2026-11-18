@@ -317,6 +317,7 @@ export async function handleChatInput(
 				effective.compaction?.thresholdTokens,
 				catalogContextLimits().get(modelIdForCompaction),
 			),
+			includeReasoning: effective.compaction?.includeReasoning === true,
 			systemPromptTokens: Math.ceil(composeInstructions(record.kind === "practice" ? "practice" : "teacher", undefined, effective.general.language).length / 4),
 			language: effective.general.language,
 		},
@@ -715,6 +716,7 @@ export async function handleChatInput(
 								fresh.compaction?.thresholdTokens,
 								catalogContextLimits().get(kickModelId),
 							),
+							includeReasoning: fresh.compaction?.includeReasoning === true,
 							systemPromptTokens: Math.ceil(composeInstructions(freshRecord.kind === "practice" ? "practice" : "teacher", undefined, fresh.general.language).length / 4),
 							language: fresh.general.language,
 						};

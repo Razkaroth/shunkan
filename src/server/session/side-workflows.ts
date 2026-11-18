@@ -1,4 +1,4 @@
-import { clearCompactionRunStep, clearExtractionRunStep, runCompactionStep, runExtractionStep } from "./steps.ts";
+import { clearCompactionRunStep, clearExtractionRunStep, clearSideRunStep, runCompactionStep, runExtractionStep, runSideAnswerStep, wakeSideStep } from "./steps.ts";
 
 /** Extraction child. The session does not await it. The run id is the single flight. */
 export async function extractionWorkflow(chatId: string, userId?: string): Promise<void> {
@@ -8,6 +8,18 @@ export async function extractionWorkflow(chatId: string, userId?: string): Promi
 		await runExtractionStep(chatId, userId);
 	} finally {
 		await clearExtractionRunStep(chatId, userId);
+	}
+}
+
+/** One side answer. The run id on the thread is the single flight. Completing it wakes the session without starting a teacher turn on its own. */
+export async function sideChatWorkflow(chatId: string, threadId: string, userId?: string): Promise<void> {
+	"use workflow";
+	console.log(`[side ${chatId}] ${threadId}`);
+	try {
+		await runSideAnswerStep(chatId, threadId, userId);
+	} finally {
+		await clearSideRunStep(chatId, threadId, userId);
+		await wakeSideStep(chatId, userId);
 	}
 }
 

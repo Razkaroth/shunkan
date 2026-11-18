@@ -43,6 +43,8 @@ import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { chartSize, useSessionMermaid } from "@/components/session-overlay";
 import { Hint } from "@/components/ui/hint";
 import { useT } from "@/components/i18n";
+import { richCodeDecision } from "@/src/core";
+import { RichCodeBlock, richFlagsFromDocument } from "@/components/rich-code";
 import { copyVisibility } from "@/components/phone-layout";
 import { usePhoneLayout } from "@/components/phone-layout-context";
 
@@ -264,6 +266,8 @@ export function MarkdownCode(props: ComponentProps<"code"> & ExtraProps) {
 	const source = codeSource(children);
 
 	if (language === "mermaid") return <MermaidInline chart={source} />;
+	const rich = richCodeDecision(language, source, richFlagsFromDocument());
+	if (rich !== "off") return <RichCodeBlock language={language} source={source} decision={rich} />;
 
 	const startMatch = /startLine=(\d+)/.exec(meta);
 	const startLine = startMatch ? Number.parseInt(startMatch[1]!, 10) : undefined;

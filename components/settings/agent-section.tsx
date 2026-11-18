@@ -66,7 +66,9 @@ import {
 	DEFAULT_LANGUAGE,
 	MODEL_SLOTS,
 	resolveSettings,
+	SEARCH_ENGINES,
 	translate,
+	type SearchEngineId,
 	type AgentSettings,
 	type AppLanguage,
 	type CompactionSettings,
@@ -91,9 +93,6 @@ const SLOT_META: Record<ModelSlotName, { label: TranslationKey; roster: Translat
 	cheap: { label: "settings.agent.slot.cheap.label", roster: "settings.agent.slot.cheap.hint" },
 	vision: { label: "settings.agent.slot.vision.label", roster: "settings.agent.slot.vision.hint" },
 };
-
-/** The search engines this wave ships (src/core/search.ts) + their labels. */
-const SEARCH_ENGINES = ["tavily", "brave"] as const;
 
 /** The owner's final toggleable-tool list (confirm with the user before
  *  changing — the Teacher stream settled this 2026-09-19). */
@@ -171,7 +170,7 @@ export function composeSlotCacheRetention(models: ModelsSettings | undefined, sl
  *  Pure — exported for tests. */
 export function composeSearchEngine(
 	agent: AgentSettings | undefined,
-	engine: (typeof SEARCH_ENGINES)[number] | null,
+	engine: SearchEngineId | null,
 ): AgentSettings {
 	if (engine === null) {
 		if (!agent?.search) return { ...agent };
@@ -189,38 +188,56 @@ export function composeSearchEngine(
  *  this line). Exported for the pin. */
 export const PROMPT_IN_USE_HINT = translate("en", "settings.agent.prompts.inUse");
 
-/** One section of the prompt view — the owner's ruled order: Teacher,
- *  Prober, then Shared last. */
+type SectionSegment = SegmentInfo & { usageHint?: string };
+
+/** One section of the prompt view: Teacher, Prober, Practice, then Shared. */
 export interface PromptSection {
-	id: "teacher" | "prober" | "shared";
+	id: "teacher" | "prober" | "practice" | "shared";
 	label: string;
-	/** The one header that earns a hint: "Shared" alone is not
-	 *  self-evident. Teacher/Prober are. */
 	hint?: string;
-	segments: SegmentInfo[];
+	segments: SectionSegment[];
 }
 
-/** Split the server's per-agent segment lists into the owner's three
- *  sections. The server contract returns the shared segments in BOTH
- *  lists (same paths, same content) — the shared chunks are listed ONCE
- *  here (taken from the teacher list; identical by construction), in
- *  assembly order: the base file, then the shared fragments sorted. The
- *  agents' own chunks keep their lists' order — which IS the prompt
- *  assembly order (numeric-prefix filename sort). Pure — exported for
- *  tests. */
+function joinNames(names: string[], language: AppLanguage): string {
+	if (names.length <= 1) return names[0] ?? "";
+	const and = language === "es" ? "y" : "and";
+	return `${names.slice(0, -1).join(", ")} ${and} ${names.at(-1)}`;
+}
+
+/** Shared fragments appear once, with the agents that actually use them. */
 export function sectionedSegments(
-	view: { prober: SegmentInfo[]; teacher: SegmentInfo[] },
+	view: { prober: SegmentInfo[]; teacher: SegmentInfo[]; practice?: SegmentInfo[] },
 	language: AppLanguage = DEFAULT_LANGUAGE,
 ): PromptSection[] {
-	const own = (who: "prober" | "teacher") => view[who].filter((s) => !s.shared);
+	const agents = [
+		{ id: "teacher" as const, label: translate(language, "settings.agent.prompts.teacher"), segments: view.teacher },
+		{ id: "prober" as const, label: translate(language, "settings.agent.prompts.prober"), segments: view.prober },
+		{ id: "practice" as const, label: translate(language, "settings.agent.prompts.practice"), segments: view.practice ?? [] },
+	];
+	const shared = new Map<string, SegmentInfo>();
+	const users = new Map<string, string[]>();
+	for (const agent of agents) {
+		for (const segment of agent.segments) {
+			if (!segment.shared) continue;
+			if (!shared.has(segment.path)) shared.set(segment.path, segment);
+			const names = users.get(segment.path) ?? [];
+			if (!names.includes(agent.label)) names.push(agent.label);
+			users.set(segment.path, names);
+		}
+	}
 	return [
-		{ id: "teacher", label: translate(language, "settings.agent.prompts.teacher"), segments: own("teacher") },
-		{ id: "prober", label: translate(language, "settings.agent.prompts.prober"), segments: own("prober") },
+		...agents.map((agent) => ({
+			id: agent.id,
+			label: agent.label,
+			segments: agent.segments.filter((segment) => !segment.shared),
+		})),
 		{
 			id: "shared",
 			label: translate(language, "settings.agent.prompts.shared"),
-			hint: translate(language, "settings.agent.prompts.sharedHint"),
-			segments: view.teacher.filter((s) => s.shared),
+			segments: [...shared.values()].map((segment) => ({
+				...segment,
+				usageHint: translate(language, "settings.agent.prompts.usedBy", { who: joinNames(users.get(segment.path) ?? [], language) }),
+			})),
 		},
 	];
 }
@@ -322,8 +339,8 @@ export function AgentSection({
 	const [search, setSearch] = useState<{ available: boolean; engine: string | null; reason: string } | null>(null);
 	/** Which search engines have a key (/api/keys) — the no-keys-anywhere
 	 *  state grays the row; per-engine marks ride the menu rows. */
-	const [engineKeys, setEngineKeys] = useState<Partial<Record<(typeof SEARCH_ENGINES)[number], boolean>>>({});
-	const [prompts, setPrompts] = useState<{ prober: SegmentInfo[]; teacher: SegmentInfo[] } | null>(null);
+	const [engineKeys, setEngineKeys] = useState<Partial<Record<SearchEngineId, boolean>>>({});
+	const [prompts, setPrompts] = useState<{ prober: SegmentInfo[]; teacher: SegmentInfo[]; practice?: SegmentInfo[] } | null>(null);
 	const [openSegment, setOpenSegment] = useState<string | null>(null);
 	const [segmentDraft, setSegmentDraft] = useState<Record<string, string>>({});
 	const [segmentStatus, setSegmentStatus] = useState<string | null>(null);
@@ -349,7 +366,7 @@ export function AgentSection({
 	const readPrompts = useCallback(() => {
 		fetch("/api/settings/prompts")
 			.then((r) => r.json())
-			.then((body: { prober: SegmentInfo[]; teacher: SegmentInfo[] }) => setPrompts(body))
+			.then((body: { prober: SegmentInfo[]; teacher: SegmentInfo[]; practice?: SegmentInfo[] }) => setPrompts(body))
 			.catch(() => {});
 	}, []);
 
@@ -366,15 +383,14 @@ export function AgentSection({
 	useEffect(() => {
 		fetch("/api/settings/prompts")
 			.then((r) => r.json())
-			.then((body: { prober: SegmentInfo[]; teacher: SegmentInfo[] }) => setPrompts(body))
+			.then((body: { prober: SegmentInfo[]; teacher: SegmentInfo[]; practice?: SegmentInfo[] }) => setPrompts(body))
 			.catch(() => setPrompts(null));
 		fetch("/api/keys")
 			.then((r) => r.json())
 			.then((body: { keys: { id: string; present: boolean }[] }) => {
-				const present: Partial<Record<(typeof SEARCH_ENGINES)[number], boolean>> = {};
-				for (const id of SEARCH_ENGINES) {
-					const envVar = id === "tavily" ? "TAVILY_API_KEY" : "BRAVE_API_KEY";
-					present[id] = body.keys.some((k) => k.id === envVar && k.present);
+				const present: Partial<Record<SearchEngineId, boolean>> = {};
+				for (const engine of SEARCH_ENGINES) {
+					present[engine.id] = body.keys.some((k) => k.id === engine.envVar && k.present);
 				}
 				setEngineKeys(present);
 			})
@@ -465,7 +481,7 @@ export function AgentSection({
 
 		/** The search-engine menu row — label + the quiet live-key mark. */
 	const engineOption = (
-		id: (typeof SEARCH_ENGINES)[number] | "auto",
+		id: SearchEngineId | "auto",
 		label: string,
 		active: boolean,
 		live: boolean | null,
@@ -487,7 +503,7 @@ export function AgentSection({
 		</button>
 	);
 
-	const segmentRow = (info: SegmentInfo) => {
+	const segmentRow = (info: SectionSegment) => {
 		const fileExists = info.overrideText !== null;
 		const open = openSegment === info.path;
 		// The Save affordance (owner ruling, refined 2026-09-26): clickable
@@ -507,7 +523,7 @@ export function AgentSection({
 					// on disk unused), "Your version is in use" when the
 					// switch is on. The switch's meaning becomes legible
 					// through this line.
-					hint={info.enabled ? t("settings.agent.prompts.inUse") : undefined}
+					hint={[info.usageHint, info.enabled ? t("settings.agent.prompts.inUse") : undefined].filter(Boolean).join(" · ") || undefined}
 					testid={`prompt-row-${info.path}`}
 				>
 					{/* Graying ruling: ONLY the toggle dims without an
@@ -832,7 +848,8 @@ export function AgentSection({
 				))}
 				{(() => {
 					const engine = agent?.search?.engine ?? null;
-					const anyKey = engineKeys.tavily === true || engineKeys.brave === true;
+					const anyKey = SEARCH_ENGINES.some((engine) => engineKeys[engine.id] === true);
+					const selectedEngine = SEARCH_ENGINES.find((item) => item.id === engine);
 					const open = openMenu?.target === "search";
 					return (
 						<SettingsRow
@@ -843,7 +860,7 @@ export function AgentSection({
 						>
 							<span ref={open ? menuAnchorRef : undefined} className="relative flex items-center gap-2">
 								<MenuTrigger
-									value={engine === "tavily" ? "Tavily" : engine === "brave" ? "Brave" : ""}
+									value={selectedEngine?.label ?? ""}
 									emptyLabel={t("settings.agent.search.automatic")}
 									ariaLabel={t("settings.agent.search.label")}
 									testid="search-engine-trigger"
@@ -863,9 +880,9 @@ export function AgentSection({
 											onSectionChange(composeSearchEngine(agent, null));
 											setOpenMenu(null);
 										})}
-										{SEARCH_ENGINES.map((id) =>
-											engineOption(id, id === "tavily" ? "Tavily" : "Brave", engine === id, engineKeys[id] ?? false, () => {
-												onSectionChange(composeSearchEngine(agent, id));
+										{SEARCH_ENGINES.map((item) =>
+											engineOption(item.id, item.label, engine === item.id, engineKeys[item.id] ?? false, () => {
+												onSectionChange(composeSearchEngine(agent, item.id));
 												setOpenMenu(null);
 											}),
 										)}
@@ -906,6 +923,17 @@ export function AgentSection({
 								thresholdTokens: Math.max(COMPACTION_THRESHOLD_FLOOR, Math.round(n)),
 							});
 						}}
+					/>
+				</SettingsRow>
+				<SettingsRow
+					label={t("settings.agent.compaction.includeReasoning")}
+					testid="compaction-row-reasoning"
+				>
+					<Toggle
+						checked={compaction?.includeReasoning ?? false}
+						label={t("settings.agent.compaction.includeReasoning")}
+						testid="toggle-include-reasoning"
+						onChange={(on) => onCompactionChange({ ...compaction, includeReasoning: on })}
 					/>
 				</SettingsRow>
 			</SettingsGroup>

@@ -11,6 +11,7 @@ import { compactionDeps } from "./compaction-deps.ts";
 import { runOneGeneration, type GenerationWriter } from "./generation.ts";
 import type { SessionHint } from "./hints.ts";
 import { runIsOpen } from "./liveness.ts";
+import { publishSideEntries } from "../side-publish.ts";
 
 /** Learner records are scoped to the signed-in profile. A step runs outside the request, so re-enter that scope. */
 function asUser<T>(userId: string | undefined, fn: () => T): T {
@@ -38,8 +39,19 @@ export async function decideWakeStep(chatId: string, hint: SessionHint, userId?:
 	return asUser(userId, () => decideWake(chatId, hint));
 }
 
+function owesTeacherTurn(chatId: string, messages: readonly LhMessage[]): boolean {
+	const substantive = [...messages].reverse().find((message) => message.role !== "custom");
+	return substantive?.role === "user" || pendingWork(chatId, messages);
+}
+
 function decideWake(chatId: string, hint: SessionHint): WakeDecision {
 	console.log(`[session ${chatId}] decide`, hint.kind);
+	if (hint.kind === "side") {
+		publishSideEntries(chatId);
+		const record = stores.chatStore.getChat(chatId);
+		if (!record || held(record.messages)) return { action: "wait" };
+		return owesTeacherTurn(chatId, record.messages) ? { action: "turn" } : { action: "wait" };
+	}
 	const record = stores.chatStore.getChat(chatId);
 	if (!record) return { action: "wait" };
 	if (held(record.messages)) return { action: "wait" };
@@ -188,6 +200,36 @@ export async function resumeSessionForJobStep(jobId: string, userId?: string): P
 		console.log(`[job ${jobId}] resume session ${job.chatId}`);
 		const { wakeSession } = await import("./wake.ts");
 		await wakeSession(job.chatId, { kind: "job" });
+	});
+}
+
+export async function runSideAnswerStep(chatId: string, threadId: string, userId?: string): Promise<void> {
+	"use step";
+	await asUser(userId, async () => {
+		const { runSideAnswer } = await import("../side-chat.ts");
+		await runSideAnswer(chatId, threadId);
+	});
+}
+
+export async function clearSideRunStep(chatId: string, threadId: string, userId?: string): Promise<void> {
+	"use step";
+	asUser(userId, () => {
+		stores.chatStore.updateSideChats(chatId, (threads) => threads.map((thread) => {
+			if (thread.id !== threadId) return thread;
+			const { runId: _runId, ...rest } = thread;
+			return rest;
+		}));
+	});
+}
+
+export async function wakeSideStep(chatId: string, userId?: string): Promise<void> {
+	"use step";
+	await asUser(userId, async () => {
+		publishSideEntries(chatId);
+		const { hostedSessions } = await import("./http.ts");
+		if (!hostedSessions()) return;
+		const { wakeSession } = await import("./wake.ts");
+		await wakeSession(chatId, { kind: "side" });
 	});
 }
 

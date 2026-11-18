@@ -212,6 +212,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			fontFamily: appearance.fontFamily ?? factoryAppearance.fontFamily,
 			proseFontSize: appearance.proseFontSize ?? factoryAppearance.proseFontSize,
 			sessionNameSerif: appearance.sessionNameSerif ?? factoryAppearance.sessionNameSerif,
+			codeLigatures: appearance.codeLigatures ?? factoryAppearance.codeLigatures,
 			textWidth: appearance.textWidth ?? factoryAppearance.textWidth,
 			constrainMedia: appearance.constrainMedia ?? factoryAppearance.constrainMedia,
 			mdRendering: {
@@ -235,6 +236,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 		},
 		compaction: {
 			thresholdTokens: record?.compaction?.thresholdTokens ?? FACTORY_SETTINGS.compaction.thresholdTokens,
+			includeReasoning: record?.compaction?.includeReasoning ?? FACTORY_SETTINGS.compaction.includeReasoning,
 		},
 		customProvider: {
 			baseUrl: record?.customProvider?.baseUrl ?? "",

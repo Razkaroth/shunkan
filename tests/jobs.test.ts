@@ -10,7 +10,7 @@
  *      CONTINUES — no turn break at the call), a job record exists, and the
  *      test runner (fake deliver) produces the steer
  *   4. runner completion: a fake researcher model (web_search call → final
- *      text brief, globalThis.fetch stubbed) → the job stores the result,
+ *      text brief, safeFetchOverride stubbed) → the job stores the result,
  *      the steer carries the brief + sources, the fake deliver flips the
  *      job done
  *   5. runner failure: a model that throws → the failure steer still fires
@@ -46,6 +46,7 @@ import {
 } from "../src/core/contracts.ts";
 import { composeInstructions, createTeacherAgent } from "../src/agent/teacher-agent.ts";
 import { createTeacherTools } from "../src/agent/tools.ts";
+import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
 import { webTools } from "../src/agent/tools/web.ts";
 import { handleChatRequest } from "../src/server/chat-handler.ts";
 import { runningTurn } from "../src/server/turn-runs.ts";
@@ -665,12 +666,11 @@ describe("research runner (async protocol §3)", () => {
 		const delivery = fakeDeliver();
 		const runner = createJobRunner({ chatStore, jobStore, deliver: delivery.deliver, searchProvider: () => null });
 		const fetched: string[] = [];
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async (source) => {
+		safeFetchOverride.current = async (source) => {
 			fetched.push(String(source));
 			assert.equal(String(source), url);
 			return new Response("Synthetic verified source content", { headers: { "content-type": "text/plain" } });
-		}) as typeof fetch;
+		};
 		researchModelOverride.current = fauxEngine([
 			fauxAssistantMessage([fauxToolCall("web_fetch", { url }, { id: "keyless-fetch" })], { stopReason: "toolUse" }),
 			fauxAssistantMessage([fauxText(brief)]),
@@ -679,7 +679,7 @@ describe("research runner (async protocol §3)", () => {
 			await runner.runJob(job.id);
 		} finally {
 			researchModelOverride.current = undefined;
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 		assert.deepEqual(fetched, [url]);
 		const done = jobStore.getJob(job.id)!;

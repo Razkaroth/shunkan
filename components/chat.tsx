@@ -26,6 +26,12 @@ import { MalformedQuestion } from "@/components/malformed-question";
 import { artifactRenderers } from "@/components/artifacts";
 import { SubagentSteerCard } from "@/components/artifacts/steer-card";
 import { ChatSessionComposer } from "@/components/composer";
+import { SelectionToolbar, type SelectionAction } from "@/components/selection-toolbar";
+import { createCiteAction, type CitationEditTarget } from "@/components/citation-actions";
+import { CitationCommentPopover } from "@/components/citation-comment-popover";
+import { SideThreadPanel, type SideAskAnchor } from "@/components/side-thread";
+import { DrawingPad } from "@/components/drawing-pad";
+import { MessageCircleIcon, PencilIcon } from "lucide-react";
 import { useEnterSubmits } from "@/components/enter-submits";
 import { blurAfterPointerClick } from "@/components/focus-hygiene";
 import { dockStateKey } from "@/components/dock-state-key";
@@ -269,6 +275,11 @@ export function Chat({
 		useChatSession({ chatId, initialMessages, initialError, initiallyInFlight });
 
 	const sessionFindScopeRef = useRef<HTMLDivElement | null>(null);
+	const [transcriptEl, setTranscriptEl] = useState<HTMLDivElement | null>(null);
+	const [citationEdit, setCitationEdit] = useState<CitationEditTarget | null>(null);
+	const [sideAnchor, setSideAnchor] = useState<SideAskAnchor | null>(null);
+	const [drawingOpen, setDrawingOpen] = useState(false);
+	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: "image/png" }>>([]);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
 
@@ -1224,7 +1235,7 @@ export function Chat({
 	const doSend = () => {
 		if (busy || pending || compacting) return;
 		const t = textRef.current.trim();
-		if (!t) return;
+		if (!t && pendingImages.length === 0) return;
 		if (zeroKeys && !trialParticipant) {
 			setSetupOpen(true);
 			return;
@@ -1238,8 +1249,10 @@ export function Chat({
 			return;
 		}
 		draftRef.current = t; // the refusal flow's preserve-and-replay seam
+		const images = pendingImages;
 		applyText("");
-		void send({ type: "text", text: t });
+		setPendingImages([]);
+		void send(images.length > 0 ? { type: "text", text: t, images } : { type: "text", text: t });
 	};
 
 	/* STEER VS SEND (owner arc 2026-10-03): a send while a turn runs steers
@@ -1254,8 +1267,9 @@ export function Chat({
 	const doSteerOrSend = () => {
 		if (pending || compacting) return;
 		const t = textRef.current.trim();
-		if (!t) return;
+		if (!t && pendingImages.length === 0) return;
 		if (busy) {
+			if (!t) return;
 			applyText("");
 			void steer(t);
 			return;
@@ -1388,6 +1402,7 @@ export function Chat({
 						</button>
 </Hint>
 					)}
+					<a href="/flashcards" className="lh-no-drag shrink-0 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground">{t("chat.header.flashcards")}</a>
 					{/* The extraction ring (owner-locked redesign, 2026-09-24): fills
 					    with uncovered vs the chunk threshold, pulses while a run is in
 					    flight, vanishes when the graph is off. Click → the exact
@@ -1414,7 +1429,46 @@ export function Chat({
 				</TopBar>
 
 				<SessionFind scopeRef={sessionFindScopeRef} scrollContextRef={scrollContextRef} />
-				<div ref={sessionFindScopeRef} className="relative flex min-h-0 flex-1">
+				<SelectionToolbar
+					viewport={transcriptEl}
+					label={t("chat.selection.toolbar")}
+					actions={[
+						createCiteAction({
+							chatId,
+							composer: () => composerInputRef.current,
+							openEditor: setCitationEdit,
+							label: t("chat.cite"),
+							ariaLabel: t("chat.cite.aria"),
+							shortenLabel: t("chat.cite.shorten"),
+						}),
+						{
+							id: "ask",
+							label: t("chat.ask"),
+							ariaLabel: t("chat.ask.aria"),
+							icon: MessageCircleIcon,
+							visible: (capture) => Boolean(capture.messageId),
+							onSelect: (capture) => {
+								setSideAnchor({
+									messageId: capture.messageId,
+									partId: `${capture.messageId}-t0`,
+									blockIndex: 0,
+									blockText: capture.selector.text,
+								});
+								return true;
+							},
+						} satisfies SelectionAction,
+					]}
+				/>
+				{citationEdit ? (
+					<CitationCommentPopover
+						target={citationEdit}
+						transcript={transcriptEl}
+						composer={() => composerInputRef.current}
+						onClose={() => setCitationEdit(null)}
+						onSend={onSend}
+					/>
+				) : null}
+				<div ref={(node) => { sessionFindScopeRef.current = node; setTranscriptEl(node); }} className="relative flex min-h-0 flex-1">
 				<Conversation className="h-full min-w-0 flex-1" initial="instant" contextRef={scrollContextRef}>
 					<SessionMessageNavigation />
 					<ConversationContent className="min-h-full gap-0 p-0">
@@ -1536,6 +1590,11 @@ export function Chat({
 												<div className="lh-prose whitespace-pre-wrap text-foreground">
 													<PathText text={m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} />
 												</div>
+												{m.parts.filter((p) => p.type === "image" && typeof p.data === "string").map((p, index) => (
+													// A learner drawing is already a data URL. The image optimizer does not apply.
+													// eslint-disable-next-line @next/next/no-img-element
+													<img key={`${m.id}-img-${index}`} alt="" src={`data:${typeof p.mimeType === "string" ? p.mimeType : "image/png"};base64,${p.data as string}`} className="mt-2 max-h-[60vh] max-w-full" />
+												))}
 											</div>
 									) : (
 									<Message from="assistant" className="max-w-full">
@@ -1750,6 +1809,13 @@ export function Chat({
 						)
 					}
 					composer={
+						<div className="flex flex-col gap-2">
+						{sideAnchor ? <SideThreadPanel chatId={chatId} anchor={sideAnchor} onClose={() => setSideAnchor(null)} /> : null}
+						{drawingOpen ? <DrawingPad onAdd={(data) => { setPendingImages((current) => [...current, { data, mimeType: "image/png" as const }].slice(-4)); setDrawingOpen(false); }} /> : null}
+						{pendingImages.length > 0 ? <div className="text-xs text-muted-foreground">{pendingImages.length}</div> : null}
+						<button type="button" className="self-start text-xs text-muted-foreground" onClick={() => setDrawingOpen((open) => !open)} aria-label={drawingOpen ? t("chat.drawing.close") : t("chat.drawing.open")}>
+							<PencilIcon className="size-3.5" aria-hidden />
+						</button>
 						<ChatSessionComposer
 							// Stop aborts ANY in-flight turn (stream-reattach wave): the
 							// square renders while a reattached/wake turn runs too — the
@@ -1772,6 +1838,7 @@ export function Chat({
 							onNext={sendNext}
 							placeholder={nextReady ? t("chat.composer.nextPlaceholder") : undefined}
 						/>
+						</div>
 					}
 					onSubmitAnswer={(output) => {
 						if (!pending) return;

@@ -7,6 +7,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { removeLeftoverTemps, writeFileAtomicSync } from "./atomic-write.ts";
 import {
 	recordDel,
 	recordDelPrefix,
@@ -53,6 +54,15 @@ function authRecordName(abs: string, authFile: string): string | null {
 	if (base === "chatgpt-credentials.json" || base === "github-copilot-credentials.json" || base === "xai-credentials.json") return base;
 	if (/^(chatgpt-credentials|github-copilot-credentials|xai-credentials)\.json\..+\.tmp$/.test(base)) return base;
 	return null;
+}
+
+/** A file under the product data root. Hosted runs persist it through learner-records. */
+export function productPath(...parts: string[]): string {
+	const root = requireRoots().dataRoot;
+	if (parts.length === 0 || parts.some((part) => !part || part === "." || part === ".." || part.includes("/") || part.includes("\\"))) {
+		throw new Error("invalid data path");
+	}
+	return path.join(root, ...parts);
 }
 
 /** Relative record path, or null when this path is not durable product data. */
@@ -112,13 +122,19 @@ export function readFileSync(file: string, encoding?: BufferEncoding): string {
 	return fs.readFileSync(file, encoding ?? "utf8");
 }
 
+function atomicMode(options?: fs.WriteFileOptions): { mode?: number } | undefined {
+	if (!options || typeof options === "string" || typeof options.mode !== "number") return undefined;
+	return { mode: options.mode };
+}
+
 export function writeFileSync(file: string, data: string | NodeJS.ArrayBufferView, options?: fs.WriteFileOptions): void {
 	const key = logicalKey(file);
 	if (key) {
 		recordPut(key, textOf(data), kindFor(key));
 		return;
 	}
-	fs.writeFileSync(file, data, options);
+	const bytes = typeof data === "string" ? data : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+	writeFileAtomicSync(file, bytes, atomicMode(options));
 }
 
 export function appendFileSync(file: string, data: string, encoding?: BufferEncoding): void {
@@ -167,6 +183,7 @@ export function unlinkSync(file: string): void {
 		return;
 	}
 	fs.unlinkSync(file);
+	removeLeftoverTemps(file);
 }
 
 export function rmSync(target: string, options?: fs.RmOptions): void {
@@ -179,6 +196,7 @@ export function rmSync(target: string, options?: fs.RmOptions): void {
 		return;
 	}
 	fs.rmSync(target, options);
+	if (!options?.recursive) removeLeftoverTemps(target);
 }
 
 export function chmodSync(file: string, mode: fs.Mode): void {

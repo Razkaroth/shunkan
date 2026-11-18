@@ -34,6 +34,7 @@
  */
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { expandCitationsForModel } from "./citations.ts";
 import type { AssistantMessage, Message, ToolResultMessage, UserMessage } from "@earendil-works/pi-ai";
 import { QUESTION_TOOLS, type PendingQuestion } from "./pending.ts";
 import { CLAUDE_CODE_PROVIDER } from "./contracts/claude-code.ts";
@@ -76,7 +77,8 @@ export interface LhMarkerMessage {
 		| "practice-thinking"
 		| "practice-next"
 		| "problem-dismissed"
-		| "compaction";
+		| "compaction"
+		| "side-question";
 	/** The model-facing text ("" for plan blocks — UI-only). */
 	content: string;
 	display: boolean;
@@ -178,12 +180,18 @@ export function newMessageId(): string {
 // ─── constructors (the input-event → native append mapping lives in
 //     core/input-events.ts; steers in core/contracts/jobs.ts) ─────────────────
 
+export interface InlineImage {
+	data: string;
+	mimeType: "image/png";
+}
+
 /** A learner-authored user message (text input, verdict note). */
-export function newUserMessage(text: string): LhMessage & UserMessage {
+export function newUserMessage(text: string, images?: readonly InlineImage[]): LhMessage & UserMessage {
+	const pictures = (images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
 	return {
 		id: newMessageId(),
 		role: "user",
-		content: text,
+		content: pictures.length > 0 ? [{ type: "text" as const, text }, ...pictures] : text,
 		timestamp: Date.now(),
 	};
 }
@@ -633,14 +641,14 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 			if (marker.customType === "compaction" && head !== null) continue;
 			out.push({
 				role: "user",
-				content: [{ type: "text", text: marker.content }],
+				content: [{ type: "text", text: marker.customType === "side-question" ? expandCitationsForModel(marker.content) : marker.content }],
 			timestamp: marker.timestamp,
 			});
 			continue;
 		}
 		// Strip app-only id/CLI context metadata: the wire carries the native shape only.
 		const { id: _id, cliContextWindow: _cliContextWindow, ...native } = m as LhMessage;
-		out.push(native as Message);
+		out.push(role === "user" ? expandUserCitations(native as UserMessage) : (native as Message));
 		// Repair unanswered calls from completed generations, not calls in
 		// failed generations. Pi filters error/aborted assistants itself;
 		// adding results for their unexecuted calls would leave orphans.
@@ -664,6 +672,11 @@ export function toLlmMessages(messages: readonly AgentMessage[]): Message[] {
 		}
 	}
 	return out;
+}
+
+function expandUserCitations(message: UserMessage): UserMessage {
+	if (typeof message.content === "string") return { ...message, content: expandCitationsForModel(message.content) };
+	return { ...message, content: message.content.map((block) => (block.type === "text" ? { ...block, text: expandCitationsForModel(block.text) } : block)) };
 }
 
 // ─── native scans (the UIMessage-era pending/phase seams, natively) ──────────

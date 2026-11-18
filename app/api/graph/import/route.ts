@@ -18,7 +18,7 @@
  * /api/graph/status, as with session runs.
  */
 import { abortOwnNotesExtractions, convertPdf, extraction, joinPages, NotesImportError, sourceDirectory, trialBlockResponse, trialSignupMessage, withUser } from "@/src/server";
-import { MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits.ts";
+import { IMPORT_EXTENSIONS, MAX_IMPORT_BODY_BYTES, MAX_IMPORT_BYTES, validNotesPath } from "@/lib/notes-import-limits.ts";
 import {
 	emit,
 	ModelsNotConfiguredError,
@@ -50,13 +50,18 @@ interface ImportResult {
 
 const MAX_PDF_PAGES = 1000;
 const PDF_MAGIC = [0x25, 0x50, 0x44, 0x46, 0x2d]; // "%PDF-"
+const PLAIN_TEXT_PROBE = 8 * 1024;
 
 type NotesFile = { kind: "notes"; text: string; notice?: string } | { kind: "refused"; error: string };
 
-/** A PDF becomes page-marked Markdown; any other file is read as text, as before. */
+/** A PDF becomes page-marked Markdown. Other supported files must be plain text. */
 async function readNotesFile(file: File): Promise<NotesFile> {
+	if (!IMPORT_EXTENSIONS.test(file.name)) return { kind: "refused", error: "Unsupported format." };
 	const bytes = new Uint8Array(await file.arrayBuffer());
-	if (!PDF_MAGIC.every((byte, i) => bytes[i] === byte)) return { kind: "notes", text: new TextDecoder().decode(bytes) };
+	if (!PDF_MAGIC.every((byte, i) => bytes[i] === byte)) {
+		if (bytes.subarray(0, PLAIN_TEXT_PROBE).includes(0)) return { kind: "refused", error: "This file isn't plain text." };
+		return { kind: "notes", text: new TextDecoder().decode(bytes) };
+	}
 	const pdf = await convertPdf(bytes, MAX_PDF_PAGES);
 	switch (pdf.kind) {
 		case "unreadable":

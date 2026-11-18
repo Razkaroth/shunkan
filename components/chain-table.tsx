@@ -68,7 +68,7 @@ import {
 	SearchIcon,
 	XIcon,
 } from "lucide-react";
-import { chainsForSelection, folderEntryCheck, toggleSourceEntries, formatChainLine, fuzzyScore, sourceFileLabel } from "@/src/core";
+import { chainsForSelection, chainSourceDirectory, folderEntryCheck, toggleSourceEntries, formatChainLine, fuzzyScore, sourceFileLabel } from "@/src/core";
 import type { GraphChain, GraphNode, SourceDirectory, SourceEntry, SourceFolder, SourceEntrySelection } from "@/src/core";
 import { EditableSourceName, SourceDragRow, sourceNameMatches, SourceFolderTree, type OrganizationChange } from "./source-folder-tree";
 import { chainRow, useChainNavigation } from "./chain-navigation";
@@ -76,6 +76,7 @@ import { useServerEvent, useServerResync } from "./server-events";
 import { TopBar } from "@/components/top-bar";
 import { DeleteSourceDialog } from "@/components/delete-source-dialog";
 import { LatexGlyph } from "@/components/latex-glyph";
+import { ToolContentResponse } from "@/components/ai-elements/message";
 import { useT } from "@/components/i18n";
 
 /** The sortable columns (owner ruling: all three — consistency). */
@@ -188,10 +189,13 @@ export function ChainTableBody({
 		sourceRecords.get(birth)?.label ?? sessions[birth] ?? (fileSources[birth] === undefined ? null : sourceFileLabel(fileSources[birth])), query),
 	[directory, sourceRecords, sessions, fileSources, query]);
 	const chains = useMemo(() => chainsForSelection(nodes, storedChains), [nodes, storedChains]);
+	const hiddenSourceIds = useMemo(() => new Set(directory?.sources.filter((s) => s.chatKind === "practice").map((s) => s.id) ?? []), [directory]);
+	const viewDirectory = useMemo(() => directory && chainSourceDirectory(directory), [directory]);
+	const sourceChains = useMemo(() => chains.filter((chain) => !hiddenSourceIds.has(byId.get(chain.conclusion)?.provenance[0]?.chatId ?? "")), [chains, byId, hiddenSourceIds]);
 	const searching = query.trim() !== "";
 	const allSourceNodes = useMemo(() => {
 		const membership = new Map<string, Set<string>>();
-		for (const chain of chains) {
+		for (const chain of sourceChains) {
 			const birth = byId.get(chain.conclusion)?.provenance[0]?.chatId;
 			if (!birth) continue;
 			const members = membership.get(birth) ?? new Set<string>();
@@ -199,13 +203,13 @@ export function ChainTableBody({
 			membership.set(birth, members);
 		}
 		return membership;
-	}, [chains, byId]);
+	}, [sourceChains, byId]);
 
 	// The fuzzy filter: a chain is visible when ANY member matches on
 	// name, aliases, or statement; chains rank by best member score.
 	const visibleChains = useMemo(() => {
-		if (!searching) return chains;
-		const scored = chains
+		if (!searching) return sourceChains;
+		const scored = sourceChains
 			.map((chain) => {
 				const birth = byId.get(chain.conclusion)?.provenance[0]?.chatId;
 				let best: number | null = birth && matchesSource(birth) ? 0 : null;
@@ -222,14 +226,14 @@ export function ChainTableBody({
 		return scored
 			.sort((a, b) => b.best - a.best || (a.chain.id < b.chain.id ? -1 : 1))
 			.map(({ chain }) => chain);
-	}, [chains, byId, query, searching, matchesSource]);
+	}, [sourceChains, byId, query, searching, matchesSource]);
 
 	// Group the visible chains by their CONCLUSION's birth (owner ruling).
 	// Unlabeled births (provenance gone / never named) form one honest
 	// muted group, sorted last under name-sort.
 	const groups = useMemo(() => {
 		const map = new Map<string, ClusterGroup>();
-		for (const source of directory?.sources ?? []) {
+		for (const source of viewDirectory?.sources ?? []) {
 			if (searching && !matchesSource(source.id)) continue;
 			map.set(source.id, { key: source.id, birth: source.id, label: source.label,
 				kind: source.kind === "missing" ? null : source.kind, chains: [], nodeIds: [], newestCreatedAt: "" });
@@ -285,7 +289,7 @@ export function ChainTableBody({
 			);
 		}
 		return list;
-	}, [visibleChains, byId, sessions, fileSources, sort, directory, sourceRecords, searching, matchesSource]);
+	}, [visibleChains, byId, sessions, fileSources, sort, viewDirectory, sourceRecords, searching, matchesSource]);
 
 	// The derived shape under the floating bar (the agents' ACTUAL input).
 	const derived = useMemo(() => {
@@ -390,13 +394,14 @@ export function ChainTableBody({
 					</div>
 				)}
 
-				<SourceFolderTree groups={groups} directory={directory} query={query} sort={sort} onAction={onOrganizationChange}
+				<SourceFolderTree groups={groups} directory={viewDirectory} query={query} sort={sort} onAction={onOrganizationChange}
 					sourceSelection={selectMode ? undefined : { sources: selectedSources, folders: selectedFolders }}
 					expanded={expandedClusters} collapsedForSearch={foldedClusters} onToggleExpanded={toggleCluster} selection={selection} selectedFolders={selectedFolders}
 					onToggleNodes={onToggleNodes} onToggleFolder={onToggleFolder} allowEmptySelection={!selectMode} allSourceNodes={allSourceNodes}
 					renderSource={(group, depth) => {
 					const open = searching ? !foldedClusters.has(group.key) : expandedClusters.has(group.key);
 					const selectedCount = group.nodeIds.filter((id) => selection.has(id)).length;
+					const empty = group.birth === null ? group.nodeIds.length === 0 : !allSourceNodes.get(group.birth)?.size;
 					return (
 						<div
 							key={group.key}
@@ -423,7 +428,7 @@ export function ChainTableBody({
 							{/* The cluster row: birth-session group header. */}
 							<SourceDragRow {...chainRow(["source", group.key], depth, open)} kind="source" id={group.key} name={group.label ?? t("artifacts.chains.unlabeled")} enabled={Boolean(onOrganizationChange && group.birth)} className="flex items-center gap-1 px-3 py-1.5">
 								<RowCheckbox
-									disabled={selectMode ? group.nodeIds.length === 0 : !directory?.sources.some((s) => s.id === group.birth)}
+									disabled={selectMode ? group.nodeIds.length === 0 : !viewDirectory?.sources.some((s) => s.id === group.birth)}
 									checked={selectMode ? selectedCount === group.nodeIds.length && group.nodeIds.length > 0 : group.birth !== null && selectedSources.has(group.birth)}
 									indeterminate={selectMode ? selectedCount > 0 && selectedCount < group.nodeIds.length : false}
 									onToggle={(next) => { if (selectMode) onToggleNodes(group.nodeIds, next); else if (group.birth) onToggleSource(group.birth, next); }}
@@ -432,12 +437,12 @@ export function ChainTableBody({
 								/>
 								<Expander open={open} onClick={() => toggleCluster(group.key)} testid={`cluster-toggle-${group.key}`} label={t("artifacts.chains.expandCluster", { label: group.label ?? t("artifacts.chains.unlabeled") })} />
 								<button type="button" data-source-icon data-testid={`source-icon-${group.key}`} aria-expanded={open} aria-label={t("artifacts.chains.expandSource", { label: group.label ?? t("artifacts.chains.unlabeled") })}
-									onClick={() => toggleCluster(group.key)} className="flex h-5 w-3.5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+									onClick={() => toggleCluster(group.key)} className={`flex h-5 w-3.5 shrink-0 items-center justify-center rounded ${empty ? "text-muted-foreground/60" : "text-muted-foreground"} transition-colors hover:bg-accent hover:text-foreground`}>
 									{open ? <BookOpenIcon className="size-3.5 shrink-0" /> : <BookIcon className="size-3.5 shrink-0" />}
 								</button>
 								{onOrganizationChange && group.birth && group.kind !== null
-									? <EditableSourceName name={group.label ?? ""} onSave={(name) => onOrganizationChange({ action: "rename-source", id: group.birth!, name })} />
-									: <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.label ?? <span className="text-muted-foreground/60">{t("artifacts.chains.unlabeled")}</span>}</span>}
+									? <EditableSourceName name={group.label ?? ""} muted={empty} onSave={(name) => onOrganizationChange({ action: "rename-source", id: group.birth!, name })} />
+									: <span className={`min-w-0 flex-1 truncate text-sm font-medium${empty ? " text-muted-foreground/60" : ""}`}>{group.label ?? <span className="text-muted-foreground/60">{t("artifacts.chains.unlabeled")}</span>}</span>}
 								{group.kind === "notes" && <span className="text-[11px] uppercase tracking-widest text-muted-foreground/60">{t("artifacts.chains.notes")}</span>}
 								<span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
 									{group.nodeIds.length}
@@ -542,6 +547,7 @@ export function ChainTableBody({
 															key={id}
 															{...chainRow(["prop", group.key, chain.id, id], depth + 2)}
 															data-testid={`prop-row-${id}`}
+															data-chain-statement
 															className="flex items-start gap-2 py-1 pl-21 pr-3"
 														>
 															{selectMode ? <RowCheckbox
@@ -550,9 +556,12 @@ export function ChainTableBody({
 																testid={`prop-checkbox-${id}`}
 																label={t("artifacts.chains.selectNode", { name: node.name })}
 															/> : <span aria-hidden="true" className="size-3.5 shrink-0" />}
-															<span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+															<ToolContentResponse
+																mode="static"
+																className="min-w-0 flex-1 text-muted-foreground [--font-prose:var(--font-ui)] [--lh-prose-size:var(--text-xs)] [--lh-prose-leading:1.625] [&_[data-streamdown=inline-code]]:[font-size:inherit] [&_[data-streamdown=inline-code]]:[color:inherit]"
+															>
 																{node.statement}
-															</span>
+															</ToolContentResponse>
 															<span className="w-14 shrink-0" />
 															<span className="w-20 shrink-0" />
 														</div>

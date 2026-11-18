@@ -7,7 +7,7 @@
  * status (the "ill-formed request" lesson: 200-served error bodies must be
  * distinguishable from real pages).
  *
- * Zero network: globalThis.fetch is stubbed with a REAL minimal PDF built
+ * Zero network: safeFetchOverride is stubbed with a REAL minimal PDF built
  * programmatically (correct xref offsets — pdfjs parses it like any
  * download). Rendering is out of scope here (no vision in the researcher).
  */
@@ -17,6 +17,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
+import { safeFetchOverride } from "../src/agent/tools/safe-fetch.ts";
 import { createPdfReadTools } from "../src/agent/tools/pdf-read.ts";
 import { createWebTools } from "../src/agent/tools/web.ts";
 
@@ -85,9 +86,8 @@ describe("researcher pdf tools — download + triage", () => {
 	it("web_fetch_pdf downloads, triages, and returns a usable summary", async () => {
 		const dir = await newDir();
 		const tools = createPdfReadTools(dir);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			pdfResponse()) as typeof fetch;
+		safeFetchOverride.current = (async () =>
+			pdfResponse());
 		try {
 			const out = await tools.web_fetch_pdf!.execute!("t1", { url: "https://arxiv.org/pdf/2406.14058" });
 			const text = asText(out);
@@ -98,16 +98,15 @@ describe("researcher pdf tools — download + triage", () => {
 			const written = await fs.readFile(summary.path);
 			assert.equal(written.byteLength, PDF_BYTES.byteLength, "the PDF bytes land on disk");
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 	});
 
 	it("the follow-up tools read the download page-level (extract + search)", async () => {
 		const dir = await newDir();
 		const tools = createPdfReadTools(dir);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			pdfResponse()) as typeof fetch;
+		safeFetchOverride.current = (async () =>
+			pdfResponse());
 		try {
 			const out = await tools.web_fetch_pdf!.execute!("t2", { url: "https://example.com/paper.pdf" });
 			const { path: pdfPath } = (out as { details: { path: string } }).details;
@@ -120,22 +119,21 @@ describe("researcher pdf tools — download + triage", () => {
 			const search = asText(await tools.pdf_search!.execute!("t4", { path: pdfPath, query: "theorem" }));
 			assert.match(search, /"page":2/);
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 	});
 
 	it("rejects non-PDF responses and non-http(s) schemes with error strings", async () => {
 		const dir = await newDir();
 		const tools = createPdfReadTools(dir);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			new Response("<html>just a page</html>", { headers: { "content-type": "text/html" } })) as typeof fetch;
+		safeFetchOverride.current = (async () =>
+			new Response("<html>just a page</html>", { headers: { "content-type": "text/html" } }));
 		try {
 			const notPdf = asText(await tools.web_fetch_pdf!.execute!("t5", { url: "https://example.com/doc" }));
 			assert.match(notPdf, /web_fetch_pdf failed/);
 			assert.match(notPdf, /Not a PDF/);
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 		const ftp = asText(await tools.web_fetch_pdf!.execute!("t6", { url: "ftp://example.com/x.pdf" }));
 		assert.match(ftp, /invalid URL/);
@@ -156,9 +154,8 @@ describe("researcher pdf tools — the temp-dir wall", () => {
 	it("pdf_info reports per-page triage signals for a real download", async () => {
 		const dir = await newDir();
 		const tools = createPdfReadTools(dir);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			pdfResponse()) as typeof fetch;
+		safeFetchOverride.current = (async () =>
+			pdfResponse());
 		try {
 			const out = await tools.web_fetch_pdf!.execute!("t9", { url: "https://example.com/x.pdf" });
 			const { path: pdfPath } = (out as { details: { path: string } }).details;
@@ -167,7 +164,7 @@ describe("researcher pdf tools — the temp-dir wall", () => {
 			assert.match(info, /"pages":\[/);
 			assert.match(info, /"text_length":/);
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 	});
 });
@@ -175,30 +172,28 @@ describe("researcher pdf tools — the temp-dir wall", () => {
 describe("web_fetch — PDF pointer + source header", () => {
 	it("a PDF URL points at web_fetch_pdf instead of dead-ending", async () => {
 		const web = createWebTools(() => null);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
-			pdfResponse()) as typeof fetch;
+		safeFetchOverride.current = (async () =>
+			pdfResponse());
 		try {
 			const out = asText(await web.web_fetch!.execute!("t11", { url: "https://example.com/paper.pdf" }));
 			assert.match(out, /PDF document/);
 			assert.match(out, /web_fetch_pdf/);
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 	});
 
 	it("output carries the source line with HTTP status", async () => {
 		const web = createWebTools(() => null);
-		const realFetch = globalThis.fetch;
-		globalThis.fetch = (async () =>
+		safeFetchOverride.current = (async () =>
 			new Response("A plain text page with enough content to matter.", {
 				headers: { "content-type": "text/plain" },
-			})) as typeof fetch;
+			}));
 		try {
 			const out = asText(await web.web_fetch!.execute!("t12", { url: "https://example.com/page" }));
 			assert.match(out, /^Source: https:\/\/example\.com\/page \(HTTP 200\)/);
 		} finally {
-			globalThis.fetch = realFetch;
+			safeFetchOverride.current = undefined;
 		}
 	});
 });

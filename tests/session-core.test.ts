@@ -1475,6 +1475,21 @@ describe("adoptRecord — append-only adoption", () => {
 		);
 	});
 
+	it("drops a tail copy whose id the durable record already holds", () => {
+		const marker = { ...userText("steer_1", "helper note"), role: "custom" } as LhMessage;
+		const m = model({ initialMessages: [userText("u1", "topic")] });
+		m.applyWireEvent({ type: "message_start", message: marker });
+		m.adoptRecord([userText("u1", "topic"), marker]);
+		assert.deepEqual(m.getState().nativeMessages.map((message) => message.id), ["u1", "steer_1"]);
+	});
+
+	it("does not append a replayed non-assistant event already in the record", () => {
+		const marker = { id: "steer_1", role: "custom", content: "helper", timestamp: 1 } as LhMessage;
+		const m = model({ initialMessages: [userText("u1", "topic"), marker] });
+		assert.equal(m.applyWireEvent({ type: "message_end", message: marker }), false);
+		assert.equal(m.getState().nativeMessages.filter((message) => message.id === "steer_1").length, 1);
+	});
+
 	it("setMessages is the full snapshot swap (the idle settle sync)", () => {
 		const m = model({ initialMessages: [userText("u1", "old")] });
 		m.setMessages([userText("u1", "old"), userText("u2", "new"), assistantMsg("a1", "reply")]);
