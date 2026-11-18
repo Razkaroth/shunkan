@@ -18,7 +18,7 @@ const config = await import("../config.ts");
 const trial = await import("../src/server/trial.ts");
 const users = await import("../src/server/users.ts");
 const { readSettings, writeSettings } = await import("../src/store/settings.ts");
-const { mintUserId, writeProfiles } = await import("../src/store/users.ts");
+const { mintUserId, readProfiles, writeProfiles } = await import("../src/store/users.ts");
 const { TRIAL_DEEPSEEK_MODEL, TRIAL_SOL_MODEL } = await import("../src/core/trial.ts");
 const { deepseekByokOptions } = await import("../src/agent/gateway-provision.ts");
 
@@ -75,8 +75,9 @@ describe("university trial", () => {
 		refusal(() => trial.redeemTrialCode(undefined, { code: "nope", name: "Friend", color: "teal" }), 403);
 		const { profileId, sessionId } = trial.redeemTrialCode(undefined, { code: "friend-code", name: "  Ada  ", color: "teal" });
 		assert.ok(sessionId);
-		const profile = users.usersSnapshot(req(sessionId)).current;
-		assert.equal(profile?.id, profileId);
+		const profile = readProfiles().find((item) => item.id === profileId);
+		assert.equal(profile?.ownerId, undefined);
+		assert.equal(users.usersSnapshot(req(sessionId), "other_parent").current, null);
 		assert.equal(profile?.role, "member");
 		assert.equal(profile?.trial, true);
 		assert.equal(profile?.name, "Ada");
@@ -108,7 +109,7 @@ describe("university trial", () => {
 	});
 
 	it("includes one GPT-Sol session, then requires the trial signup before continuing", async () => {
-		const friend = users.usersSnapshot(undefined).profiles.find((p) => p.trial);
+		const friend = readProfiles().find((p) => p.trial);
 		assert.ok(friend);
 		const sessions = JSON.parse(fs.readFileSync(config.INSTALL.sessions, "utf8")) as Record<string, { userId: string }>;
 		const cookie = Object.entries(sessions).find(([, entry]) => entry.userId === friend.id)?.[0];
@@ -148,6 +149,10 @@ describe("university trial", () => {
 		assert.equal(createdEmail, "ada@example.edu");
 		assert.equal(config.runAsUser(friend.id, () => trial.trialBlockResponse()), null);
 		assert.equal(trial.trialStatusFor(friend.id).signedUp, true);
+		assert.equal(readProfiles().find((item) => item.id === friend.id)?.ownerId, "user_trial_ada");
+		assert.equal(readProfiles().find((item) => item.name === "Owner")?.ownerId, undefined);
+		assert.ok(users.usersSnapshot(authed, "user_trial_ada").profiles.some((item) => item.id === friend.id));
+		assert.equal(users.usersSnapshot(authed, "other_parent").profiles.some((item) => item.id === friend.id), false);
 		refusal(() => trial.startSolSession(authed), 409);
 		assert.doesNotMatch(fs.readFileSync(config.INSTALL.trial, "utf8"), /long-enough/);
 	});

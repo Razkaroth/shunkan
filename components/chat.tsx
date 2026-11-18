@@ -279,7 +279,26 @@ export function Chat({
 	const [citationEdit, setCitationEdit] = useState<CitationEditTarget | null>(null);
 	const [sideAnchor, setSideAnchor] = useState<SideAskAnchor | null>(null);
 	const [drawingOpen, setDrawingOpen] = useState(false);
-	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: "image/png" }>>([]);
+	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: "image/png"; imageId: string }>>([]);
+	const [plugins, setPlugins] = useState({ flashcards: false, drawingPad: false, richCodeBlocks: false });
+	useEffect(() => {
+		let cancelled = false;
+		void fetch("/api/plugins", { cache: "no-store" })
+			.then((res) => (res.ok ? res.json() : null))
+			.then((body: { enabled?: { flashcards?: boolean; drawingPad?: boolean; richCodeBlocks?: boolean } } | null) => {
+				if (!cancelled && body?.enabled) {
+					setPlugins({
+						flashcards: body.enabled.flashcards === true,
+						drawingPad: body.enabled.drawingPad === true,
+						richCodeBlocks: body.enabled.richCodeBlocks === true,
+					});
+				}
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
 	const sourceTextParts = useMemo(() => firstSourceTextParts(messages), [messages]);
 
@@ -1402,7 +1421,7 @@ export function Chat({
 						</button>
 </Hint>
 					)}
-					<a href="/flashcards" className="lh-no-drag shrink-0 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground">{t("chat.header.flashcards")}</a>
+					{plugins.flashcards ? <a href="/flashcards" className="lh-no-drag shrink-0 text-xs uppercase tracking-wide text-muted-foreground hover:text-foreground">{t("chat.header.flashcards")}</a> : null}
 					{/* The extraction ring (owner-locked redesign, 2026-09-24): fills
 					    with uncovered vs the chunk threshold, pulses while a run is in
 					    flight, vanishes when the graph is off. Click → the exact
@@ -1590,11 +1609,20 @@ export function Chat({
 												<div className="lh-prose whitespace-pre-wrap text-foreground">
 													<PathText text={m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} />
 												</div>
-												{m.parts.filter((p) => p.type === "image" && typeof p.data === "string").map((p, index) => (
-													// A learner drawing is already a data URL. The image optimizer does not apply.
-													// eslint-disable-next-line @next/next/no-img-element
-													<img key={`${m.id}-img-${index}`} alt="" src={`data:${typeof p.mimeType === "string" ? p.mimeType : "image/png"};base64,${p.data as string}`} className="mt-2 max-h-[60vh] max-w-full" />
-												))}
+												{m.parts.flatMap((p, index) => {
+													if (p.type !== "image") return [];
+													const record = p as { type: string; imageId?: unknown; data?: unknown; mimeType?: unknown };
+													const imageId = typeof record.imageId === "string" ? record.imageId : null;
+													const data = typeof record.data === "string" ? record.data : null;
+													if (!imageId && !data) return [];
+													const mime = typeof record.mimeType === "string" ? record.mimeType : "image/png";
+													const src = imageId ? `/api/learner-images/${imageId}` : `data:${mime};base64,${data}`;
+													return [(
+														// A stored drawing is served by the private profile route. Older messages still carry their data URL.
+														// eslint-disable-next-line @next/next/no-img-element
+														<img key={`${m.id}-img-${index}`} alt="" src={src} className="mt-2 max-h-[60vh] max-w-full" />
+													)];
+												})}
 											</div>
 									) : (
 									<Message from="assistant" className="max-w-full">
@@ -1811,11 +1839,25 @@ export function Chat({
 					composer={
 						<div className="flex flex-col gap-2">
 						{sideAnchor ? <SideThreadPanel chatId={chatId} anchor={sideAnchor} onClose={() => setSideAnchor(null)} /> : null}
-						{drawingOpen ? <DrawingPad onAdd={(data) => { setPendingImages((current) => [...current, { data, mimeType: "image/png" as const }].slice(-4)); setDrawingOpen(false); }} /> : null}
-						{pendingImages.length > 0 ? <div className="text-xs text-muted-foreground">{pendingImages.length}</div> : null}
-						<button type="button" className="self-start text-xs text-muted-foreground" onClick={() => setDrawingOpen((open) => !open)} aria-label={drawingOpen ? t("chat.drawing.close") : t("chat.drawing.open")}>
-							<PencilIcon className="size-3.5" aria-hidden />
-						</button>
+						{plugins.drawingPad && drawingOpen ? <DrawingPad onAdd={(data) => {
+							void (async () => {
+								const res = await fetch("/api/learner-images", {
+									method: "POST",
+									headers: { "content-type": "application/json" },
+									body: JSON.stringify({ data, mimeType: "image/png" }),
+								});
+								const body = (await res.json().catch(() => ({}))) as { id?: string };
+								if (!res.ok || typeof body.id !== "string") return;
+								setPendingImages((current) => [...current, { data, mimeType: "image/png" as const, imageId: body.id as string }].slice(-4));
+								setDrawingOpen(false);
+							})();
+						}} /> : null}
+						{plugins.drawingPad && pendingImages.length > 0 ? <div className="text-xs text-muted-foreground">{pendingImages.length}</div> : null}
+						{plugins.drawingPad ? (
+							<button type="button" className="self-start text-xs text-muted-foreground" onClick={() => setDrawingOpen((open) => !open)} aria-label={drawingOpen ? t("chat.drawing.close") : t("chat.drawing.open")}>
+								<PencilIcon className="size-3.5" aria-hidden />
+							</button>
+						) : null}
 						<ChatSessionComposer
 							// Stop aborts ANY in-flight turn (stream-reattach wave): the
 							// square renders while a reattached/wake turn runs too — the

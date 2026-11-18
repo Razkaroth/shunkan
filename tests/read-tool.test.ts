@@ -12,9 +12,10 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { after, describe, it } from "node:test";
 import { createCanvas } from "@napi-rs/canvas";
+import { learnerRoot } from "../config.ts";
 import { readTool } from "../src/agent/tools/read.ts";
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "lh-read-test-"));
+const tmp = fs.mkdtempSync(path.join(learnerRoot(), "lh-read-test-"));
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 function write(name: string, content: string): string {
@@ -40,12 +41,9 @@ describe("read tool — text semantics", () => {
 		assert.equal(details, "hello\nworld", "the record part output carries the string verbatim");
 	});
 
-	it("resolves relative paths against the learner's home (sources v1 anchoring)", async () => {
-		// sources v1: the harness has no meaningful cwd — "find my notes" must
-		// work from a bare relative path, so the home directory is the anchor
-		// (fs-shared resolveSourcePath). Scratch file in home, cleaned up.
+	it("resolves relative paths inside the active profile", async () => {
 		const rel = `lh-read-rel-test-${process.pid}.txt`;
-		const homeFile = path.join(os.homedir(), rel);
+		const homeFile = path.join(learnerRoot(), rel);
 		fs.writeFileSync(homeFile, "rel", "utf-8");
 		try {
 			assert.equal((await run({ path: rel })).text, "rel");

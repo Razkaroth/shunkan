@@ -20,6 +20,7 @@ import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { INSTALL, LEARNER_ENTRIES, runAsUser, userDataDir } from "../../config.ts";
 import {
+	isOwnerId,
 	isProfileColor,
 	isStripeCustomerId,
 	isValidPin,
@@ -120,13 +121,22 @@ function publicWithLanguage(profile: Profile): PublicProfile {
 	return { ...publicProfile(profile), language: profileLanguage(profile.id) };
 }
 
-export function usersSnapshot(req: Request | undefined): UsersSnapshot {
+/** The signed-in account asked to attach a profile to someone else. */
+export function assertOwnAccount(requested: unknown, accountId: string): void {
+	if (typeof requested === "string" && requested !== accountId) {
+		throw new UsersError(403, "A profile belongs to the signed-in account.");
+	}
+}
+
+export function usersSnapshot(req: Request | undefined, ownerId: string): UsersSnapshot {
 	const profiles = readProfiles();
+	const owned = profiles.filter((profile) => profile.ownerId === ownerId);
 	const caller = requestProfile(req);
+	const visibleCaller = caller?.ownerId === ownerId ? caller : null;
 	return {
-		profiles: profiles.map(publicWithLanguage),
+		profiles: owned.map(publicWithLanguage),
 		host: readHostSettings(),
-		current: caller ? publicWithLanguage(caller) : null,
+		current: visibleCaller ? publicWithLanguage(visibleCaller) : null,
 		canSignUp: canSignUp(caller, profiles),
 		existingData: hasUnclaimedData(),
 	};
@@ -187,7 +197,8 @@ function writeLanguage(userId: string, language: AppLanguage): void {
  * request with no signed-in profile (the select screen) is signed in as
  * the new profile; the admin adding someone from Settings stays put.
  */
-export function createProfile(req: Request | undefined, input: ProfileInput): { profile: PublicProfile; sessionId: string | null } {
+export function createProfile(req: Request | undefined, input: ProfileInput, ownerId: string): { profile: PublicProfile; sessionId: string | null } {
+	if (!isOwnerId(ownerId)) throw new UsersError(401, "Sign in first.");
 	const profiles = readProfiles();
 	const caller = requestProfile(req);
 	if (!canSignUp(caller, profiles)) throw new UsersError(403, "Sign-ups are restricted. Ask the admin to add you.");
@@ -195,12 +206,15 @@ export function createProfile(req: Request | undefined, input: ProfileInput): { 
 	const color = parseColor(input.color);
 	const pin = parsePin(input.pin);
 	const first = profiles.length === 0;
+	const sharedCustomer = profiles.find((profile) => profile.ownerId === ownerId && profile.stripeCustomerId)?.stripeCustomerId;
 	const profile: Profile = {
 		id: mintUserId(),
 		name,
 		color,
 		role: first ? "admin" : "member",
+		ownerId,
 		...(pin ? { pin } : {}),
+		...(sharedCustomer ? { stripeCustomerId: sharedCustomer } : {}),
 		createdAt: new Date().toISOString(),
 	};
 	if (first && !registryExists()) claimRoot(profile.id);
@@ -250,10 +264,12 @@ export function deleteProfile(req: Request | undefined, id: string): void {
 	fs.rmSync(userDataDir(id), { recursive: true, force: true });
 }
 
-/** Open a profile: checks the PIN when it has one. Returns the session id. */
-export function unlockProfile(id: unknown, pin: unknown): string {
+/** Open a profile that belongs to this Payload user. A missing PIN is not enough for a different user. */
+export function unlockProfile(id: unknown, pin: unknown, ownerId: string): string {
+	if (!isOwnerId(ownerId)) throw new UsersError(401, "Sign in first.");
 	const profile = readProfiles().find((p) => p.id === id);
 	if (!profile) throw new UsersError(404, "No such profile.");
+	if (profile.ownerId !== ownerId) throw new UsersError(403, "That profile belongs to another account.");
 	if (profile.pin && profile.pin !== pin) throw new UsersError(401, "Wrong PIN.");
 	return createSession(profile.id);
 }

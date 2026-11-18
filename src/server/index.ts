@@ -55,13 +55,18 @@ export { sessionCost } from "./pricing.ts";
 // Multi-user profiles (2026-10-27): sessions, permissions, the claim, and
 // the withUser route wrapper.
 export * from "./users.ts";
+export { LOGIN_PATH, loginRedirect, requestAccountId } from "./account.ts";
 export {
 	billingErrorResponse,
 	billingStatus,
+	familyBillingReport,
 	startBasicCheckout,
+	startBillingPortal,
 	startRechargeCheckout,
 	billingWebhookResponse,
 } from "./stripe-billing.ts";
+export { pluginEnabled, pluginsResponse, setPluginResponse } from "./plugins.ts";
+export { learnerImageResponse, saveLearnerImageResponse } from "./learner-images.ts";
 export { payAsYouGoEnabled } from "./feature-flags.ts";
 export * from "./trial.ts";
 export { claudeCodeInstallationResponse } from "./claude-code.ts";

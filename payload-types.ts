@@ -73,6 +73,7 @@ export interface Config {
     verifications: Verification;
     'admin-invitations': AdminInvitation;
     'demo-files': DemoFile;
+    'learner-images': LearnerImage;
     'learner-records': LearnerRecord;
     'payload-kv': PayloadKv;
     'payload-locked-documents': PayloadLockedDocument;
@@ -92,6 +93,7 @@ export interface Config {
     verifications: VerificationsSelect<false> | VerificationsSelect<true>;
     'admin-invitations': AdminInvitationsSelect<false> | AdminInvitationsSelect<true>;
     'demo-files': DemoFilesSelect<false> | DemoFilesSelect<true>;
+    'learner-images': LearnerImagesSelect<false> | LearnerImagesSelect<true>;
     'learner-records': LearnerRecordsSelect<false> | LearnerRecordsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -104,10 +106,12 @@ export interface Config {
   fallbackLocale: null;
   globals: {
     'feature-flags': FeatureFlag;
+    plugins: Plugin;
     pricing: Pricing;
   };
   globalsSelect: {
     'feature-flags': FeatureFlagsSelect<false> | FeatureFlagsSelect<true>;
+    plugins: PluginsSelect<false> | PluginsSelect<true>;
     pricing: PricingSelect<false> | PricingSelect<true>;
   };
   locale: null;
@@ -316,20 +320,6 @@ export interface AdminInvitation {
   createdAt: string;
 }
 /**
- * Durable learner data. Includes private keys. Admin access only.
- *
- * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "learner-records".
- */
-export interface LearnerRecord {
-  id: string;
-  path: string;
-  kind: string;
-  body?: string | null;
-  updatedAt: string;
-  createdAt: string;
-}
-/**
  * S3 storage for later demo files.
  *
  * This interface was referenced by `Config`'s JSON-Schema
@@ -351,6 +341,41 @@ export interface DemoFile {
   height?: number | null;
   focalX?: number | null;
   focalY?: number | null;
+}
+/**
+ * Private learner images. No public URL. Admin access only.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-images".
+ */
+export interface LearnerImage {
+  id: string;
+  profileId: string;
+  updatedAt: string;
+  createdAt: string;
+  url?: string | null;
+  thumbnailURL?: string | null;
+  filename?: string | null;
+  mimeType?: string | null;
+  filesize?: number | null;
+  width?: number | null;
+  height?: number | null;
+  focalX?: number | null;
+  focalY?: number | null;
+}
+/**
+ * Durable learner data. Includes private keys. Admin access only.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-records".
+ */
+export interface LearnerRecord {
+  id: string;
+  path: string;
+  kind: string;
+  body: string;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -399,6 +424,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'demo-files';
         value: string | DemoFile;
+      } | null)
+    | ({
+        relationTo: 'learner-images';
+        value: string | LearnerImage;
       } | null)
     | ({
         relationTo: 'learner-records';
@@ -521,17 +550,6 @@ export interface AdminInvitationsSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
- * via the `definition` "learner-records_select".
- */
-export interface LearnerRecordsSelect<T extends boolean = true> {
-  path?: T;
-  kind?: T;
-  body?: T;
-  updatedAt?: T;
-  createdAt?: T;
-}
-/**
- * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "demo-files_select".
  */
 export interface DemoFilesSelect<T extends boolean = true> {
@@ -549,6 +567,35 @@ export interface DemoFilesSelect<T extends boolean = true> {
   height?: T;
   focalX?: T;
   focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-images_select".
+ */
+export interface LearnerImagesSelect<T extends boolean = true> {
+  profileId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  url?: T;
+  thumbnailURL?: T;
+  filename?: T;
+  mimeType?: T;
+  filesize?: T;
+  width?: T;
+  height?: T;
+  focalX?: T;
+  focalY?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "learner-records_select".
+ */
+export interface LearnerRecordsSelect<T extends boolean = true> {
+  path?: T;
+  kind?: T;
+  body?: T;
+  updatedAt?: T;
+  createdAt?: T;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -591,6 +638,87 @@ export interface PayloadMigrationsSelect<T extends boolean = true> {
   createdAt?: T;
 }
 /**
+ * Each flag is its own checkbox. Off is the launch default.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feature-flags".
+ */
+export interface FeatureFlag {
+  id: string;
+  /**
+   * When on, a user with no monthly tokens and no recharge can keep spending and Stripe bills that use. When off, that spend is blocked. Launch default is off: we do not extend credit.
+   */
+  payAsYouGo?: boolean | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * Each checkbox allows a signed-in household to turn that plugin on. Off is the default.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "plugins".
+ */
+export interface Plugin {
+  id: string;
+  flashcards?: boolean | null;
+  drawingPad?: boolean | null;
+  richCodeBlocks?: boolean | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * Monthly price and the share of it granted as token credit. Leave either field empty and plan checkout waits. Nothing here assumes an amount.
+ *
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pricing".
+ */
+export interface Pricing {
+  id: string;
+  /**
+   * Licensed Basic price for one month, in MXN. Empty means the plan price is not set.
+   */
+  monthlyPriceMxn?: number | null;
+  /**
+   * Percent of the monthly price granted as token credit. The rest stays revenue. Empty means the grant is not set.
+   */
+  commissionPercent?: number | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "feature-flags_select".
+ */
+export interface FeatureFlagsSelect<T extends boolean = true> {
+  payAsYouGo?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "plugins_select".
+ */
+export interface PluginsSelect<T extends boolean = true> {
+  flashcards?: T;
+  drawingPad?: T;
+  richCodeBlocks?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "pricing_select".
+ */
+export interface PricingSelect<T extends boolean = true> {
+  monthlyPriceMxn?: T;
+  commissionPercent?: T;
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
  * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "collections_widget".
  */
@@ -606,40 +734,6 @@ export interface CollectionsWidget {
  */
 export interface Auth {
   [k: string]: unknown;
-}
-/**
- * Feature flags. Each flag is its own checkbox on the `feature-flags` global.
- * `payAsYouGo` defaults to false.
- */
-export interface FeatureFlag {
-  id: string;
-  payAsYouGo?: boolean | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-}
-export interface FeatureFlagsSelect<T extends boolean = true> {
-  payAsYouGo?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
-}
-/**
- * Monthly price and commission. Each is its own number on the `pricing`
- * global. Unset fields are not a price and not a grant.
- */
-export interface Pricing {
-  id: string;
-  monthlyPriceMxn?: number | null;
-  commissionPercent?: number | null;
-  updatedAt?: string | null;
-  createdAt?: string | null;
-}
-export interface PricingSelect<T extends boolean = true> {
-  monthlyPriceMxn?: T;
-  commissionPercent?: T;
-  updatedAt?: T;
-  createdAt?: T;
-  globalType?: T;
 }
 
 

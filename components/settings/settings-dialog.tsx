@@ -54,6 +54,7 @@ import { MENU_CLOSE_EVENT, MENU_OPEN_EVENT } from "@/components/menu-shell";
 import { notifySettingsSaved } from "@/components/settings-signal";
 import { KeysSection } from "./keys-section.tsx";
 import { BillingSection } from "./billing-section.tsx";
+import { PluginsSection } from "./plugins-section.tsx";
 import { Hint } from "@/components/ui/hint";
 import { usePhoneLayout } from "@/components/phone-layout-context";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,7 @@ const SECTIONS = [
 	{ id: "keyboard", label: "settings.section.keyboard" },
 	{ id: "users", label: "settings.section.users" },
 	{ id: "billing", label: "settings.section.billing" },
+	{ id: "plugins", label: "settings.section.plugins" },
 	{ id: "general", label: "settings.section.general" },
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
@@ -402,6 +404,11 @@ export function SettingsDialogBody({
 							{active === "billing" && (
 								<SettingsSection title={t("settings.section.billing")} testid="section-billing">
 									<BillingSection />
+								</SettingsSection>
+							)}
+							{active === "plugins" && (
+								<SettingsSection title={t("settings.section.plugins")} testid="section-plugins">
+									<PluginsSection />
 								</SettingsSection>
 							)}
 							{active === "keys" && (

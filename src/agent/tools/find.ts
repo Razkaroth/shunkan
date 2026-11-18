@@ -29,7 +29,7 @@ const findInput = Type.Object({
 		minLength: 1,
 		description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
 	}),
-	path: Type.Optional(Type.String({ description: "Directory to search in (default: the learner's home directory)" })),
+	path: Type.Optional(Type.String({ description: "Directory to search in (default: this profile's folder)" })),
 	limit: Type.Optional(Type.Integer({ description: "Maximum number of results (default: 1000)" })),
 });
 

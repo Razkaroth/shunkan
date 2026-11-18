@@ -152,13 +152,26 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 	// has ever set is tracked; names absent from the new set are removed so
 	// the factory stylesheet value returns.
 	const appliedNamesRef = useRef<Set<string>>(new Set());
+	const [richPlugin, setRichPlugin] = useState(false);
+	useEffect(() => {
+		let cancelled = false;
+		void fetch("/api/plugins", { cache: "no-store" })
+			.then((res) => (res.ok ? res.json() : null))
+			.then((body: { enabled?: { richCodeBlocks?: boolean } } | null) => {
+				if (!cancelled && body?.enabled?.richCodeBlocks === true) setRichPlugin(true);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 	useEffect(() => {
 		const root = document.documentElement;
-		const flags = delta?.richCode;
+		const flags = richPlugin ? delta?.richCode : undefined;
 		root.dataset.richChemical = flags?.chemicalStructures ? "1" : "";
 		root.dataset.richMusic = flags?.musicalNotation ? "1" : "";
 		root.dataset.richDiagrams = flags?.technicalDiagrams ? "1" : "";
-	}, [delta]);
+	}, [delta, richPlugin]);
 
 	useEffect(() => {
 		if (appliedRef.current === key) return;

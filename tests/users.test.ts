@@ -41,6 +41,8 @@ let adminId = "";
 let adminSession = "";
 let memberId = "";
 let memberSession = "";
+const OWNER = "parent_ada";
+const OTHER = "parent_bee";
 
 describe("multi-user profiles", () => {
 	it("an unclaimed install resolves learner paths at the root and withUser passes through", async () => {
@@ -48,7 +50,7 @@ describe("multi-user profiles", () => {
 		assert.equal(config.PATHS.chats, path.join(ROOT, "chats"));
 		const body = (await (await whoAmI(reqAs(null))).json()) as { user: string | null; data: string };
 		assert.deepEqual(body, { user: null, data: ROOT });
-		assert.equal(users.usersSnapshot(undefined).canSignUp, true, "zero profiles = anyone may create the first");
+		assert.equal(users.usersSnapshot(undefined, OWNER).canSignUp, true, "zero profiles = anyone may create the first");
 	});
 
 	it("the first profile is the admin and claims the existing learner records", () => {
@@ -56,14 +58,16 @@ describe("multi-user profiles", () => {
 		fs.writeFileSync(path.join(ROOT, "chats", "c1.json"), "{}");
 		fs.writeFileSync(path.join(ROOT, "settings.json"), "{}");
 		fs.writeFileSync(path.join(ROOT, "models-cache.json"), "{}");
-		assert.equal(users.usersSnapshot(undefined).existingData, true);
+		assert.equal(users.usersSnapshot(undefined, OWNER).existingData, true);
 
-		const { profile, sessionId } = users.createProfile(undefined, { name: "  Ada   Lovelace ", color: "teal", pin: null });
+		const { profile, sessionId } = users.createProfile(undefined, { name: "  Ada   Lovelace ", color: "teal", pin: null }, OWNER);
 		assert.equal(profile.role, "admin");
 		assert.equal(profile.name, "Ada Lovelace");
 		assert.ok(sessionId, "creating from the select screen signs in");
 		adminId = profile.id;
 		adminSession = sessionId;
+		const stored = JSON.parse(fs.readFileSync(config.INSTALL.users, "utf8")) as { profiles: { ownerId?: string }[] };
+		assert.equal(stored.profiles[0]?.ownerId, OWNER);
 
 		const dir = config.userDataDir(adminId);
 		assert.ok(fs.existsSync(path.join(dir, "chats", "c1.json")));
@@ -71,7 +75,7 @@ describe("multi-user profiles", () => {
 		assert.ok(!fs.existsSync(path.join(ROOT, "chats")), "learner entries moved, not copied");
 		assert.ok(fs.existsSync(path.join(ROOT, "models-cache.json")), "install-wide files stay at the root");
 		assert.ok(fs.existsSync(config.INSTALL.users));
-		assert.equal(users.usersSnapshot(undefined).existingData, false);
+		assert.equal(users.usersSnapshot(undefined, OWNER).existingData, false);
 	});
 
 	it("once claimed, the server layer still loads with no profile active (the /api/users routes import it)", async () => {
@@ -102,15 +106,15 @@ describe("multi-user profiles", () => {
 	});
 
 	it("names are trimmed, capped, and unique regardless of case", () => {
-		refusal(() => users.createProfile(reqAs(adminSession), { name: "ada lovelace", color: "rose" }), 400);
-		refusal(() => users.createProfile(reqAs(adminSession), { name: "   ", color: "rose" }), 400);
-		refusal(() => users.createProfile(reqAs(adminSession), { name: "x".repeat(33), color: "rose" }), 400);
-		refusal(() => users.createProfile(reqAs(adminSession), { name: "Bo", color: "magenta" }), 400);
+		refusal(() => users.createProfile(reqAs(adminSession), { name: "ada lovelace", color: "rose" }, OWNER), 400);
+		refusal(() => users.createProfile(reqAs(adminSession), { name: "   ", color: "rose" }, OWNER), 400);
+		refusal(() => users.createProfile(reqAs(adminSession), { name: "x".repeat(33), color: "rose" }, OWNER), 400);
+		refusal(() => users.createProfile(reqAs(adminSession), { name: "Bo", color: "magenta" }, OWNER), 400);
 	});
 
 	it("the PIN gate: an admin-added profile with a PIN opens only with that PIN", () => {
-		refusal(() => users.createProfile(reqAs(adminSession), { name: "Bo", color: "sky", pin: "12" }), 400);
-		const { profile, sessionId } = users.createProfile(reqAs(adminSession), { name: "Bo", color: "sky", pin: "1234" });
+		refusal(() => users.createProfile(reqAs(adminSession), { name: "Bo", color: "sky", pin: "12" }, OWNER), 400);
+		const { profile, sessionId } = users.createProfile(reqAs(adminSession), { name: "Bo", color: "sky", pin: "1234" }, OWNER);
 		assert.equal(sessionId, null, "the admin adding someone stays signed in as the admin");
 		assert.equal(profile.role, "member");
 		assert.equal(profile.hasPin, true);
@@ -118,10 +122,11 @@ describe("multi-user profiles", () => {
 		assert.ok(fs.existsSync(config.userDataDir(profile.id)));
 		memberId = profile.id;
 
-		refusal(() => users.unlockProfile(memberId, "0000"), 401);
-		refusal(() => users.unlockProfile(memberId, undefined), 401);
-		refusal(() => users.unlockProfile("usr_missing", "1234"), 404);
-		memberSession = users.unlockProfile(memberId, "1234");
+		refusal(() => users.unlockProfile(memberId, "0000", OWNER), 401);
+		refusal(() => users.unlockProfile(memberId, undefined, OWNER), 401);
+		refusal(() => users.unlockProfile(memberId, undefined, OTHER), 403);
+		refusal(() => users.unlockProfile("usr_missing", "1234", OWNER), 404);
+		memberSession = users.unlockProfile(memberId, "1234", OWNER);
 		assert.equal(users.sessionProfileId(memberSession), memberId);
 	});
 
@@ -133,7 +138,8 @@ describe("multi-user profiles", () => {
 		refusal(() => users.updateProfile(reqAs(null), memberId, { name: "Anon" }), 401);
 
 		assert.equal(users.updateProfile(reqAs(adminSession), memberId, { pin: null }).hasPin, false);
-		assert.equal(users.unlockProfile(memberId, "anything").length > 0, true, "no PIN = opens directly");
+		refusal(() => users.unlockProfile(memberId, undefined, OTHER), 403);
+		assert.equal(users.unlockProfile(memberId, "anything", OWNER).length > 0, true, "no PIN still requires this account");
 		assert.equal(users.updateProfile(reqAs(memberSession), memberId, { pin: "5678" }).hasPin, true);
 	});
 
@@ -142,14 +148,15 @@ describe("multi-user profiles", () => {
 		refusal(() => users.setRestrictedSignups(reqAs(adminSession), "yes"), 400);
 		users.setRestrictedSignups(reqAs(adminSession), true);
 
-		assert.equal(users.usersSnapshot(undefined).canSignUp, false);
-		assert.equal(users.usersSnapshot(reqAs(memberSession)).canSignUp, false);
-		assert.equal(users.usersSnapshot(reqAs(adminSession)).canSignUp, true);
-		refusal(() => users.createProfile(undefined, { name: "Cy", color: "amber" }), 403);
-		refusal(() => users.createProfile(reqAs(memberSession), { name: "Cy", color: "amber" }), 403);
+		assert.equal(users.usersSnapshot(undefined, OWNER).canSignUp, false);
+		assert.equal(users.usersSnapshot(reqAs(memberSession), OWNER).canSignUp, false);
+		assert.equal(users.usersSnapshot(reqAs(adminSession), OWNER).canSignUp, true);
+		refusal(() => users.createProfile(undefined, { name: "Cy", color: "amber" }, OTHER), 403);
+		refusal(() => users.createProfile(reqAs(memberSession), { name: "Cy", color: "amber" }, OTHER), 403);
+		assert.throws(() => users.assertOwnAccount(OTHER, OWNER), (err: unknown) => err instanceof users.UsersError && err.status === 403);
 
 		users.setRestrictedSignups(reqAs(adminSession), false);
-		const self = users.createProfile(undefined, { name: "Cy", color: "amber" });
+		const self = users.createProfile(undefined, { name: "Cy", color: "amber" }, OTHER);
 		assert.ok(self.sessionId, "self sign-up from the select screen signs in");
 		assert.equal(self.profile.role, "member", "only the first profile is an admin");
 	});
@@ -167,13 +174,14 @@ describe("multi-user profiles", () => {
 	});
 
 	it("ending a session signs the browser out", async () => {
-		const session = users.unlockProfile(adminId, undefined);
+		const session = users.unlockProfile(adminId, undefined, OWNER);
 		users.endSession(reqAs(session));
 		assert.equal((await whoAmI(reqAs(session))).status, 401);
 	});
 
 	it("the event channel only carries the subscriber's profile's events (and profile-less ones)", async () => {
-		const cy = users.usersSnapshot(reqAs(adminSession)).profiles.find((p) => p.name === "Cy");
+		const cy = users.usersSnapshot(undefined, OTHER).profiles.find((p) => p.name === "Cy");
+		assert.equal(users.usersSnapshot(reqAs(adminSession), OWNER).profiles.some((p) => p.name === "Cy"), false);
 		assert.ok(cy);
 		const res = config.runAsUser(adminId, () => eventsResponse());
 		const reader = res.body!.getReader();
@@ -193,23 +201,23 @@ describe("multi-user profiles", () => {
 
 	it("a profile created with a language starts in it; an unknown language is ignored", async () => {
 		const { readSettings } = await import("../src/store/settings.ts");
-		const es = users.createProfile(reqAs(adminSession), { name: "Dani", color: "sky", language: "es" }).profile;
+		const es = users.createProfile(reqAs(adminSession), { name: "Dani", color: "sky", language: "es" }, OWNER).profile;
 		assert.equal(config.runAsUser(es.id, () => readSettings())?.general?.language, "es");
-		const other = users.createProfile(reqAs(adminSession), { name: "Eli", color: "sky", language: "xx" }).profile;
+		const other = users.createProfile(reqAs(adminSession), { name: "Eli", color: "sky", language: "xx" }, OWNER).profile;
 		assert.equal(config.runAsUser(other.id, () => readSettings()), null, "no seed = no settings record");
 	});
 
 	it("editing a profile's language writes its settings; the snapshot reports each profile's language", async () => {
 		const { readSettings } = await import("../src/store/settings.ts");
-		const fran = users.createProfile(reqAs(adminSession), { name: "Fran", color: "teal" }).profile;
-		const franSession = users.unlockProfile(fran.id, undefined);
-		const snapshotLanguage = (id: string) => users.usersSnapshot(reqAs(adminSession)).profiles.find((p) => p.id === id)?.language;
+		const fran = users.createProfile(reqAs(adminSession), { name: "Fran", color: "teal" }, OWNER).profile;
+		const franSession = users.unlockProfile(fran.id, undefined, OWNER);
+		const snapshotLanguage = (id: string) => users.usersSnapshot(reqAs(adminSession), OWNER).profiles.find((p) => p.id === id)?.language;
 		assert.equal(snapshotLanguage(fran.id), "en", "no record = the default language");
 		assert.equal(users.updateProfile(reqAs(adminSession), fran.id, { language: "es" }).language, "es");
 		assert.equal(config.runAsUser(fran.id, () => readSettings())?.general?.language, "es");
 		assert.equal(snapshotLanguage(fran.id), "es");
 		refusal(() => users.updateProfile(reqAs(adminSession), fran.id, { language: "xx" }), 400);
 		assert.equal(users.updateProfile(reqAs(franSession), fran.id, { language: "en" }).language, "en");
-		assert.equal(users.usersSnapshot(reqAs(franSession)).current?.language, "en");
+		assert.equal(users.usersSnapshot(reqAs(franSession), OWNER).current?.language, "en");
 	});
 });

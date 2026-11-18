@@ -73,4 +73,13 @@ export const users = {
 	"users.trial.signup.password": "Password",
 	"users.trial.signup.name": "Name",
 	"users.trial.signup.submit": "Create account",
+	"users.login.title": "Sign in",
+	"users.login.email": "Email",
+	"users.login.password": "Password",
+	"users.login.signIn": "Sign in",
+	"users.login.signUp": "Create account",
+	"users.login.switchSignUp": "Need an account? Sign up",
+	"users.login.switchSignIn": "Already have an account? Sign in",
+	"users.login.failed": "That did not work. Check the email and password.",
+	"users.login.working": "Working…",
 };

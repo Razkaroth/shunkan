@@ -336,7 +336,23 @@ function linkTrialAccount(accountId: string): { accountId: string } {
 	if (latest.signedUpAt) return { accountId: latest.accountId ?? accountId };
 	const { signupPendingAt: _pending, ...rest } = latest;
 	writeTrialRecord({ ...rest, accountId, signedUpAt: new Date().toISOString() });
+	if (latest.profileId) {
+		writeProfiles(readProfiles().map((profile) => (
+			profile.id === latest.profileId ? { ...profile, ownerId: accountId } : profile
+		)));
+	}
 	return { accountId };
+}
+
+/** The one unsigned trial profile can be opened before its signup attaches an owner. */
+export function unlockUnsignedTrial(id: unknown, pin: unknown): string {
+	const record = readTrialRecord();
+	const profile = readProfiles().find((item) => item.id === id);
+	if (!profile || !profile.trial || profile.ownerId || record.signedUpAt || record.profileId !== profile.id) {
+		throw new TrialError(401, "Sign in first.");
+	}
+	if (profile.pin && profile.pin !== pin) throw new TrialError(401, "Wrong PIN.");
+	return createSession(profile.id);
 }
 
 function clearSignupPending(): void {

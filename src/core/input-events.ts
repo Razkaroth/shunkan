@@ -47,7 +47,7 @@ import { QUESTION_TOOLS, toolQuestionKind } from "./pending.ts";
 
 /** One client-originated input event (the POST body's `input`). */
 export type ChatInput =
-	| { type: "text"; text: string; images?: Array<{ data: string; mimeType: "image/png" }> }
+	| { type: "text"; text: string; images?: Array<{ data: string; mimeType: "image/png"; imageId?: string }> }
 	| { type: "answer"; toolCallId: string; answer: QuestionAnswerData }
 	| { type: "continue" }
 	/** The failed-turn retry (issue #110): the banner's Retry button. */
@@ -161,17 +161,18 @@ export class ChatInputError extends Error {}
 
 const IMAGE_BYTES = 6_000_000;
 
-function parseInlineImages(raw: unknown): Array<{ data: string; mimeType: "image/png" }> {
+function parseInlineImages(raw: unknown): Array<{ data: string; mimeType: "image/png"; imageId?: string }> {
 	if (raw === undefined) return [];
 	if (!Array.isArray(raw) || raw.length > 4) throw new ChatInputError("images must be a list of at most 4 drawings");
 	return raw.map((item) => {
 		if (!item || typeof item !== "object") throw new ChatInputError("each image needs png data");
-		const image = item as { data?: unknown; mimeType?: unknown };
+		const image = item as { data?: unknown; mimeType?: unknown; imageId?: unknown };
 		if (image.mimeType !== "image/png" || typeof image.data !== "string" || image.data.length === 0 || image.data.length > IMAGE_BYTES) {
 			throw new ChatInputError("each image needs png data");
 		}
 		if (!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) throw new ChatInputError("each image needs png data");
-		return { data: image.data, mimeType: "image/png" as const };
+		const imageId = typeof image.imageId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(image.imageId) ? image.imageId : undefined;
+		return { data: image.data, mimeType: "image/png" as const, ...(imageId ? { imageId } : {}) };
 	});
 }
 

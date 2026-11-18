@@ -83,7 +83,7 @@ function readTextSlice(text: string, offset: number | undefined, limit: number |
  * (2026-09-19): the description is pi-verbatim (user: copy tool usage
  * guidance exactly) — the teaching doctrine moved to the shared prompt
  * fragment (prompts/shared/). Relative paths resolve against the
- * learner's home (fs-shared.ts), the harness's anchor.
+ * active profile's folder (fs-shared.ts), the harness's anchor.
  */
 export type ReadModel = Pick<Model<Api>, "input" | "inputLimits">;
 
