@@ -155,5 +155,14 @@ describe("university trial", () => {
 		assert.equal(users.usersSnapshot(authed, "other_parent").profiles.some((item) => item.id === friend.id), false);
 		refusal(() => trial.startSolSession(authed), 409);
 		assert.doesNotMatch(fs.readFileSync(config.INSTALL.trial, "utf8"), /long-enough/);
+		writeProfiles(readProfiles().map((profile) => {
+			if (profile.id !== friend.id) return profile;
+			const { ownerId: _owner, ...rest } = profile;
+			return rest;
+		}));
+		const recovered = await trial.signUpFromTrial(authed, { email: "ada@example.edu", name: "Ada", password: "long-enough" });
+		assert.equal(recovered.accountId, "user_trial_ada");
+		assert.equal(readProfiles().find((item) => item.id === friend.id)?.ownerId, "user_trial_ada");
+		assert.throws(() => trial.unlockUnsignedTrial(friend.id, undefined), (err: unknown) => err instanceof trial.TrialError);
 	});
 });

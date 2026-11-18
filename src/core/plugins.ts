@@ -1,6 +1,9 @@
 /** The three plugins this install ships. Each checkbox defaults off. */
 export const PLUGIN_IDS = ["flashcards", "drawingPad", "richCodeBlocks"] as const;
 
+/** The settings screen publishes the household's saved flags on this event. */
+export const PLUGINS_CHANGED_EVENT = "shunkan-plugins";
+
 export type PluginId = (typeof PLUGIN_IDS)[number];
 
 export type PluginFlags = Record<PluginId, boolean>;

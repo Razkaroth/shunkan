@@ -66,6 +66,12 @@ describe("family closed beta", () => {
 		assert.equal(billing.secondBasicCheckoutRefused("past_due"), true);
 		assert.equal(billing.secondBasicCheckoutRefused("canceled"), false);
 		assert.equal(billing.secondBasicCheckoutRefused("none"), false);
+		const basic = { id: "sub_basic", created: 1, status: "active", priceIds: ["price_basic"] };
+		const meter = { id: "sub_meter", created: 2, status: "active", priceIds: ["price_token"] };
+		const newer = { id: "sub_newer", created: 3, status: "past_due", priceIds: ["price_basic", "price_token"] };
+		assert.equal(billing.basicCheckoutBlocked([meter], "price_basic"), false);
+		assert.equal(billing.basicCheckoutBlocked([basic], "price_basic"), true);
+		assert.deepEqual(billing.basicSubscriptionsToCancel([newer, basic, meter], "price_basic"), ["sub_newer"]);
 		const failed = billing.lastFailedPayment([
 			{ id: "in_new", attempted: true, paid: false, status: "open", amount_due: 8000, currency: "mxn", created: 2 },
 			{ id: "in_old", attempted: true, paid: false, status: "open", amount_due: 100, currency: "mxn", created: 1 },
@@ -81,6 +87,11 @@ describe("family closed beta", () => {
 		const profiles = readProfiles();
 		assert.equal(profiles.find((profile) => profile.id === ada.profile.id)?.stripeCustomerId, "cus_familybeta");
 		assert.equal(profiles.find((profile) => profile.id === bo.profile.id)?.stripeCustomerId, "cus_familybeta");
+		writeProfiles(readProfiles().map((profile) => (
+			profile.id === bo.profile.id ? { ...profile, stripeCustomerId: "cus_otherfamily" } : profile
+		)));
+		stripe.bindProfileStripeCustomer(ada.profile.id, "cus_familybeta");
+		assert.equal(readProfiles().find((profile) => profile.id === bo.profile.id)?.stripeCustomerId, "cus_familybeta");
 		writeProfiles([...readProfiles(), {
 			id: mintUserId(),
 			name: "Loose",

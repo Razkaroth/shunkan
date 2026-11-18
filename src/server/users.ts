@@ -47,6 +47,7 @@ import {
 import { readSettings, writeSettings } from "../store/settings.ts";
 import { isAppLanguage, type AppLanguage } from "../core/i18n.ts";
 import { resolveSettings } from "../core/settings-resolution.ts";
+import { requestAccountId } from "./account.ts";
 
 export { registryExists } from "../store/users.ts";
 export { runAsUser, activeUserId } from "../../config.ts";
@@ -89,6 +90,25 @@ export function requestSessionId(req: Request | undefined): string | null {
 export function requestProfile(req: Request | undefined): Profile | null {
 	const id = sessionProfileId(requestSessionId(req));
 	return id ? (readProfiles().find((p) => p.id === id) ?? null) : null;
+}
+
+function hasAccountSessionCookie(req: Request | undefined): boolean {
+	const header = req?.headers.get("cookie");
+	if (!header) return false;
+	return /(?:^|;\s*)(?:__Secure-|__Host-)?better-auth\.session_token=/.test(header);
+}
+
+/**
+ * The profile cookie, dropped when a Payload session is present and the
+ * profile belongs to a different account. No account cookie leaves the
+ * profile cookie as it is, so the unsigned trial still opens.
+ */
+export async function requestBoundProfile(req: Request | undefined): Promise<Profile | null> {
+	const profile = requestProfile(req);
+	if (!profile || !hasAccountSessionCookie(req)) return profile;
+	const accountId = await requestAccountId(req);
+	if (accountId && profile.ownerId !== accountId) return null;
+	return profile;
 }
 
 /** Session cookie: no Max-Age, so a closed app or browser lands on the
@@ -137,7 +157,7 @@ export function usersSnapshot(req: Request | undefined, ownerId: string): UsersS
 		profiles: owned.map(publicWithLanguage),
 		host: readHostSettings(),
 		current: visibleCaller ? publicWithLanguage(visibleCaller) : null,
-		canSignUp: canSignUp(caller, profiles),
+		canSignUp: canSignUp(visibleCaller, profiles),
 		existingData: hasUnclaimedData(),
 	};
 }
@@ -201,7 +221,8 @@ export function createProfile(req: Request | undefined, input: ProfileInput, own
 	if (!isOwnerId(ownerId)) throw new UsersError(401, "Sign in first.");
 	const profiles = readProfiles();
 	const caller = requestProfile(req);
-	if (!canSignUp(caller, profiles)) throw new UsersError(403, "Sign-ups are restricted. Ask the admin to add you.");
+	const ownCaller = caller?.ownerId === ownerId ? caller : null;
+	if (!canSignUp(ownCaller, profiles)) throw new UsersError(403, "Sign-ups are restricted. Ask the admin to add you.");
 	const name = parseName(input.name, profiles);
 	const color = parseColor(input.color);
 	const pin = parsePin(input.pin);
@@ -221,7 +242,7 @@ export function createProfile(req: Request | undefined, input: ProfileInput, own
 	else fs.mkdirSync(userDataDir(profile.id), { recursive: true });
 	if (isAppLanguage(input.language)) writeLanguage(profile.id, input.language);
 	writeProfiles([...profiles, profile]);
-	const sessionId = caller ? null : createSession(profile.id);
+	const sessionId = ownCaller ? null : createSession(profile.id);
 	return { profile: publicWithLanguage(profile), sessionId };
 }
 
@@ -304,8 +325,8 @@ export function withUser<A extends unknown[]>(
 	return async (...args: A): Promise<Response> => {
 		if (!registryExists()) return handler(...args);
 		const req = args[0] instanceof Request ? args[0] : undefined;
-		const userId = sessionProfileId(requestSessionId(req));
-		if (!userId) return Response.json({ error: "Choose a profile first." }, { status: 401 });
-		return runAsUser(userId, () => handler(...args));
+		const profile = await requestBoundProfile(req);
+		if (!profile) return Response.json({ error: "Choose a profile first." }, { status: 401 });
+		return runAsUser(profile.id, () => handler(...args));
 	};
 }

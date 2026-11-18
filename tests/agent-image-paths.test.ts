@@ -20,30 +20,32 @@ import {
 import type { PiEngine } from "../src/agent/models.ts";
 import type { ModelImageResizeOptions } from "../src/agent/image-processing/index.ts";
 import type { HeadlessApi } from "../src/agent/subagents/headless.ts";
-import { learnerRoot } from "../config.ts";
 
 // Install storage/auth seams BEFORE importing the agent composition root.
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "lh-agent-image-paths-"));
 const originalEnv = process.env;
 const originalFetch = globalThis.fetch;
-const profileFiles = path.join(learnerRoot(), `lh-agent-image-${process.pid}`);
-fs.mkdirSync(profileFiles, { recursive: true });
-fs.mkdirSync(path.join(profileFiles, "home"));
-fs.writeFileSync(path.join(profileFiles, "auth.json"), "{}");
+const dataDir = path.join(scratch, "data");
+const homeDir = path.join(scratch, "home");
+fs.mkdirSync(dataDir, { recursive: true });
+fs.mkdirSync(homeDir, { recursive: true });
+fs.writeFileSync(path.join(scratch, "auth.json"), "{}");
 process.env = {
 	...(originalEnv.NODE_TEST_CONTEXT ? { NODE_TEST_CONTEXT: originalEnv.NODE_TEST_CONTEXT } : {}),
 	...(originalEnv.NODE_OPTIONS ? { NODE_OPTIONS: originalEnv.NODE_OPTIONS } : {}),
 	NODE_ENV: "test",
-	HOME: path.join(profileFiles, "home"),
-	LH_DATA_DIR: path.join(profileFiles, "data"),
-	LH_AUTH_FILE: path.join(profileFiles, "auth.json"),
+	HOME: homeDir,
+	LH_DATA_DIR: dataDir,
+	LH_AUTH_FILE: path.join(scratch, "auth.json"),
 };
+const { learnerRoot } = await import("../config.ts");
+const profileFiles = learnerRoot();
 globalThis.fetch = async () => { throw new Error("CLOSED: unexpected network request"); };
 after(() => {
 	process.env = originalEnv;
 	globalThis.fetch = originalFetch;
 	fs.rmSync(scratch, { recursive: true, force: true });
-	fs.rmSync(profileFiles, { recursive: true, force: true });
+	if (profileFiles !== dataDir) fs.rmSync(path.join(profileFiles, "sample-3page.pdf"), { force: true });
 });
 
 const { readTool } = await import("../src/agent/tools/read.ts");

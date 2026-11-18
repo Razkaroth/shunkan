@@ -210,9 +210,11 @@ export function UsersSection({
 interface FamilyRow {
 	ownerId: string;
 	profiles: { id: string; name: string }[];
-	subscription: "active" | "past_due" | "canceled" | "none" | "unconfigured";
+	subscription: "active" | "past_due" | "canceled" | "none" | "unconfigured" | "unavailable";
 	remaining: { monthlyCentavos: number; rechargeCentavos: number } | null;
+	creditUnavailable?: boolean;
 	lastFailedPayment: { invoiceId: string; amountCentavos: number; currency: string; created: number } | null;
+	paymentUnavailable?: boolean;
 }
 
 const FAMILY_STATUS = {
@@ -221,6 +223,7 @@ const FAMILY_STATUS = {
 	canceled: "settings.billing.subscription.canceled",
 	none: "settings.billing.subscription.none",
 	unconfigured: "settings.billing.subscription.unconfigured",
+	unavailable: "settings.billing.subscription.unavailable",
 } as const;
 
 function pesos(centavos: number): string {
@@ -257,11 +260,15 @@ function FamilyBilling() {
 						<span className="font-ui text-xs text-muted-foreground">
 							{t("settings.billing.familyCredit")}: {pesos(family.remaining.monthlyCentavos + family.remaining.rechargeCentavos)} MXN
 						</span>
+					) : family.creditUnavailable ? (
+						<span className="font-ui text-xs text-muted-foreground">{t("settings.billing.familyCreditUnavailable")}</span>
 					) : null}
 					{family.lastFailedPayment ? (
 						<span className="font-ui text-xs text-muted-foreground">
 							{t("settings.billing.familyFailed")}: {pesos(family.lastFailedPayment.amountCentavos)} {family.lastFailedPayment.currency.toUpperCase()}
 						</span>
+					) : family.paymentUnavailable ? (
+						<span className="font-ui text-xs text-muted-foreground">{t("settings.billing.familyPaymentUnavailable")}</span>
 					) : null}
 				</div>
 			))}

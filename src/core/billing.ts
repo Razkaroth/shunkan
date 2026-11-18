@@ -56,6 +56,32 @@ export function secondBasicCheckoutRefused(status: FamilySubscription): boolean 
 	return status === "active" || status === "past_due";
 }
 
+export interface BasicSubscriptionView {
+	id: string;
+	created: number;
+	status: string;
+	priceIds: readonly string[];
+}
+
+/** A token-only subscription does not count as Basic. */
+export function basicCheckoutBlocked(subscriptions: readonly BasicSubscriptionView[], basicPriceId: string): boolean {
+	return subscriptions.some((subscription) =>
+		(subscription.status === "active" || subscription.status === "past_due")
+		&& subscription.priceIds.includes(basicPriceId),
+	);
+}
+
+/** Every live Basic subscription except the oldest one. The oldest stays. */
+export function basicSubscriptionsToCancel(subscriptions: readonly BasicSubscriptionView[], basicPriceId: string): string[] {
+	const live = subscriptions.filter((subscription) =>
+		(subscription.status === "active" || subscription.status === "past_due")
+		&& subscription.priceIds.includes(basicPriceId),
+	);
+	if (live.length <= 1) return [];
+	const ranked = [...live].sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+	return ranked.slice(1).map((subscription) => subscription.id);
+}
+
 export interface FailedPayment {
 	invoiceId: string;
 	amountCentavos: number;

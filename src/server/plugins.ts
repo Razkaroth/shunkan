@@ -16,7 +16,7 @@ import {
 } from "../core/plugins.ts";
 import * as fs from "../persistence/data-file.ts";
 import { requestAccountId } from "./account.ts";
-import { requestProfile, UsersError } from "./users.ts";
+import { requestBoundProfile, requestProfile, UsersError } from "./users.ts";
 
 const CHOICES = () => path.join(INSTALL.root, "plugin-choices.json");
 const ALLOW_TTL_MS = 5_000;
@@ -100,7 +100,7 @@ export async function setHouseholdPlugin(ownerId: string, id: PluginId, enabled:
 }
 
 export async function pluginsResponse(req: Request): Promise<Response> {
-	const profile = requestProfile(req);
+	const profile = await requestBoundProfile(req);
 	if (!profile?.ownerId) return Response.json({ allowed: PLUGINS_OFF, enabled: PLUGINS_OFF });
 	return Response.json(await pluginsForOwner(profile.ownerId));
 }

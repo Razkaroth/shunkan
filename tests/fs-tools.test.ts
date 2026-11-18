@@ -114,6 +114,24 @@ describe("resolveSourcePath (fs-shared)", () => {
 		assert.equal(resolveSourcePath(input), expected);
 	});
 
+	it("refuses a symlink that leaves the profile and keeps one that stays inside", async () => {
+		const root = learnerRoot();
+		const dir = await fs.mkdtemp(path.join(root, "lh-link-"));
+		const outside = await fs.mkdtemp(path.join(os.tmpdir(), "lh-outside-"));
+		try {
+			await fs.writeFile(path.join(outside, "secret.txt"), "secret");
+			await fs.symlink(outside, path.join(dir, "link"));
+			assert.throws(() => resolveSourcePath(path.join(dir, "link")), /outside this profile/);
+			assert.throws(() => resolveSourcePath(path.join(dir, "link", "secret.txt")), /outside this profile/);
+			await fs.writeFile(path.join(dir, "inside.txt"), "inside");
+			await fs.symlink(path.join(dir, "inside.txt"), path.join(dir, "alias.txt"));
+			assert.equal(resolveSourcePath(path.join(dir, "alias.txt")), await fs.realpath(path.join(dir, "inside.txt")));
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+			await fs.rm(outside, { recursive: true, force: true });
+		}
+	});
+
 	it("~user and non-leading tildes stay inside the profile", () => {
 		const root = learnerRoot();
 		assert.equal(resolveSourcePath("~other/notes.md"), path.join(root, "~other", "notes.md"));

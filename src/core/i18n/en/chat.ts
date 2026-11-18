@@ -74,6 +74,8 @@ export const chat = {
 	"chat.drawing.undo": "Undo",
 	"chat.drawing.pan": "Pan",
 	"chat.drawing.add": "Add drawing",
+	"chat.drawing.failed": "The drawing could not be added. Try again.",
+	"chat.drawing.retry": "Try again",
 	"chat.header.flashcards": "Flashcards",
 	"chat.flashcards.title": "Flashcards",
 	"chat.flashcards.deckName": "Deck name",

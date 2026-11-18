@@ -1,3 +1,4 @@
+import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { learnerRoot } from "../../../config.ts";
@@ -42,10 +43,33 @@ function insidePrefix(root: string, candidate: string): boolean {
 	return resolved === base || resolved.startsWith(prefix);
 }
 
+function errno(err: unknown): string | undefined {
+	return err && typeof err === "object" && "code" in err && typeof err.code === "string" ? err.code : undefined;
+}
+
+/** The path with every existing symlink resolved. Missing tail segments stay lexical. */
+function canonicalPath(candidate: string): string {
+	const missing: string[] = [];
+	let current = candidate;
+	for (;;) {
+		try {
+			const real = fsSync.realpathSync(current);
+			return missing.length === 0 ? real : path.resolve(real, ...missing);
+		} catch (err) {
+			if (errno(err) !== "ENOENT") throw err;
+			const parent = path.dirname(current);
+			if (parent === current) throw err;
+			missing.unshift(path.basename(current));
+			current = parent;
+		}
+	}
+}
+
 /** Resolve a tool path inside the active profile's learner-records prefix.
  *  A missing path, a relative path, and `~` or `~/` stay in that prefix.
  *  They do not use the server home. An absolute path outside the prefix
- *  is refused. `~user` is not expanded. */
+ *  is refused. `~user` is not expanded. A symlink is refused when its
+ *  target leaves the prefix, including a starting directory. */
 export function resolveSourcePath(p?: string): string {
 	const root = learnerRoot();
 	let rest = p ?? "";
@@ -53,7 +77,17 @@ export function resolveSourcePath(p?: string): string {
 	else if (rest.startsWith("~/") || rest.startsWith(`~${path.sep}`)) rest = rest.slice(2);
 	const candidate = path.isAbsolute(rest) ? path.resolve(rest) : path.resolve(root, rest);
 	if (!insidePrefix(root, candidate)) throw new Error(`Path is outside this profile: ${p ?? ""}`);
-	return candidate;
+	let canonicalRoot = root;
+	let canonical = candidate;
+	try {
+		canonicalRoot = fsSync.realpathSync(root);
+		canonical = canonicalPath(candidate);
+	} catch (err) {
+		if (errno(err) === "ENOENT") return candidate;
+		throw new Error(`Path is outside this profile: ${p ?? ""}`);
+	}
+	if (!insidePrefix(canonicalRoot, canonical)) throw new Error(`Path is outside this profile: ${p ?? ""}`);
+	return canonical;
 }
 
 /** pi's formatSize idiom (50KB prints as "50.0KB"). */

@@ -2,10 +2,11 @@
  * Browser image uploads land in the private `learner-images` collection.
  * The product route is the only reader, and only for the profile that owns the bytes.
  */
+import crypto from "node:crypto";
 import * as fs from "node:fs";
 import path from "node:path";
 import { learnerImageDir } from "../../collections/LearnerImages.ts";
-import { requestProfile, UsersError } from "./users.ts";
+import { requestBoundProfile, UsersError } from "./users.ts";
 
 const MIME = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const MAX_BYTES = 6_000_000;
@@ -48,7 +49,7 @@ const payloadStore: ImageStore = {
 			file: {
 				data: image.bytes,
 				mimetype: image.mimeType,
-				name: "learner-image",
+				name: `learner-${crypto.randomUUID()}`,
 				size: image.bytes.length,
 			},
 			overrideAccess: true,
@@ -105,14 +106,14 @@ export async function readLearnerImage(profileId: string, id: string): Promise<S
 }
 
 export async function saveLearnerImageResponse(req: Request, body: { data?: unknown; mimeType?: unknown }): Promise<Response> {
-	const profile = requestProfile(req);
+	const profile = await requestBoundProfile(req);
 	if (!profile) throw new UsersError(401, "Choose a profile first.");
 	const id = await saveLearnerImage(profile.id, body.data, body.mimeType);
 	return Response.json({ id }, { status: 201 });
 }
 
 export async function learnerImageResponse(req: Request, id: string): Promise<Response> {
-	const profile = requestProfile(req);
+	const profile = await requestBoundProfile(req);
 	if (!profile) return new Response(null, { status: 401 });
 	const image = await readLearnerImage(profile.id, id);
 	if (!image) return new Response(null, { status: 404 });

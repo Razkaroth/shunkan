@@ -298,7 +298,11 @@ export async function signUpFromTrial(
 	if (!profile) throw new TrialError(401, "Choose a profile first.");
 	const record = participantRecord(profile.id);
 	if (!record.solEndedAt) throw new TrialError(409, "Finish the GPT-Sol session before signing up.");
-	if (record.signedUpAt) throw new TrialError(409, "This trial already has an account.");
+	if (record.signedUpAt) {
+		const owned = record.profileId ? readProfiles().find((item) => item.id === record.profileId) : undefined;
+		if (record.accountId && owned && !owned.ownerId) return linkTrialAccount(record.accountId);
+		throw new TrialError(409, "This trial already has an account.");
+	}
 	const account = parseSignup(input);
 	const pending = readTrialRecord();
 	if (pending.signupPendingAt && !pending.signedUpAt) {
@@ -331,17 +335,24 @@ export async function signUpFromTrial(
 	return linkTrialAccount(created.id);
 }
 
+function attachTrialOwner(profileId: string | undefined, accountId: string): void {
+	if (!profileId) return;
+	const profiles = readProfiles();
+	const target = profiles.find((profile) => profile.id === profileId);
+	if (!target || target.ownerId) return;
+	writeProfiles(profiles.map((profile) => (
+		profile.id === profileId ? { ...profile, ownerId: accountId } : profile
+	)));
+}
+
 function linkTrialAccount(accountId: string): { accountId: string } {
 	const latest = readTrialRecord();
-	if (latest.signedUpAt) return { accountId: latest.accountId ?? accountId };
+	const persisted = latest.accountId ?? accountId;
+	attachTrialOwner(latest.profileId, persisted);
+	if (latest.signedUpAt) return { accountId: persisted };
 	const { signupPendingAt: _pending, ...rest } = latest;
-	writeTrialRecord({ ...rest, accountId, signedUpAt: new Date().toISOString() });
-	if (latest.profileId) {
-		writeProfiles(readProfiles().map((profile) => (
-			profile.id === latest.profileId ? { ...profile, ownerId: accountId } : profile
-		)));
-	}
-	return { accountId };
+	writeTrialRecord({ ...rest, accountId: persisted, signedUpAt: new Date().toISOString() });
+	return { accountId: persisted };
 }
 
 /** The one unsigned trial profile can be opened before its signup attaches an owner. */

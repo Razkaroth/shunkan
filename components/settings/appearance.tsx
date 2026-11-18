@@ -20,7 +20,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { FACTORY_SETTINGS, TEXT_WIDTH_SIZES, type AppearanceSettings } from "@/src/core";
+import { FACTORY_SETTINGS, PLUGINS_CHANGED_EVENT, TEXT_WIDTH_SIZES, type AppearanceSettings } from "@/src/core";
 
 /** The resolved, fully-concrete appearance view (delta + factory merged). */
 export function resolveAppearance(delta: AppearanceSettings | undefined) {
@@ -155,14 +155,22 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 	const [richPlugin, setRichPlugin] = useState(false);
 	useEffect(() => {
 		let cancelled = false;
+		const apply = (enabled: { richCodeBlocks?: boolean } | undefined) => {
+			if (!cancelled) setRichPlugin(enabled?.richCodeBlocks === true);
+		};
+		const onChange = (event: Event) => {
+			apply((event as CustomEvent<{ richCodeBlocks?: boolean }>).detail);
+		};
+		window.addEventListener(PLUGINS_CHANGED_EVENT, onChange);
 		void fetch("/api/plugins", { cache: "no-store" })
 			.then((res) => (res.ok ? res.json() : null))
 			.then((body: { enabled?: { richCodeBlocks?: boolean } } | null) => {
-				if (!cancelled && body?.enabled?.richCodeBlocks === true) setRichPlugin(true);
+				apply(body?.enabled);
 			})
 			.catch(() => {});
 		return () => {
 			cancelled = true;
+			window.removeEventListener(PLUGINS_CHANGED_EVENT, onChange);
 		};
 	}, []);
 	useEffect(() => {

@@ -56,6 +56,8 @@ import {
 	type ChatSettings,
 	type LhMessage,
 	type ModelSlotName,
+	PLUGINS_CHANGED_EVENT,
+	type PluginFlags,
 } from "@/src/core";
 import { PlanBlock, PlanPopup, latestTree } from "@/components/plan-block";
 import { PlanMarginalia, planExists } from "@/components/plan-window";
@@ -279,24 +281,35 @@ export function Chat({
 	const [citationEdit, setCitationEdit] = useState<CitationEditTarget | null>(null);
 	const [sideAnchor, setSideAnchor] = useState<SideAskAnchor | null>(null);
 	const [drawingOpen, setDrawingOpen] = useState(false);
+	const [drawingUploads, setDrawingUploads] = useState(0);
+	const drawingUploadsRef = useRef(0);
+	const [drawingError, setDrawingError] = useState<string | null>(null);
+	const [drawingRetry, setDrawingRetry] = useState<string | null>(null);
 	const [pendingImages, setPendingImages] = useState<Array<{ data: string; mimeType: "image/png"; imageId: string }>>([]);
 	const [plugins, setPlugins] = useState({ flashcards: false, drawingPad: false, richCodeBlocks: false });
 	useEffect(() => {
 		let cancelled = false;
+		const apply = (enabled: Partial<PluginFlags> | undefined) => {
+			if (cancelled || !enabled) return;
+			setPlugins({
+				flashcards: enabled.flashcards === true,
+				drawingPad: enabled.drawingPad === true,
+				richCodeBlocks: enabled.richCodeBlocks === true,
+			});
+		};
+		const onChange = (event: Event) => {
+			apply((event as CustomEvent<PluginFlags>).detail);
+		};
+		window.addEventListener(PLUGINS_CHANGED_EVENT, onChange);
 		void fetch("/api/plugins", { cache: "no-store" })
 			.then((res) => (res.ok ? res.json() : null))
-			.then((body: { enabled?: { flashcards?: boolean; drawingPad?: boolean; richCodeBlocks?: boolean } } | null) => {
-				if (!cancelled && body?.enabled) {
-					setPlugins({
-						flashcards: body.enabled.flashcards === true,
-						drawingPad: body.enabled.drawingPad === true,
-						richCodeBlocks: body.enabled.richCodeBlocks === true,
-					});
-				}
+			.then((body: { enabled?: Partial<PluginFlags> } | null) => {
+				apply(body?.enabled);
 			})
 			.catch(() => {});
 		return () => {
 			cancelled = true;
+			window.removeEventListener(PLUGINS_CHANGED_EVENT, onChange);
 		};
 	}, []);
 	const scrollContextRef = useRef<StickToBottomContext | null>(null);
@@ -792,7 +805,7 @@ export function Chat({
 	// recovers from it. Later compaction requires new input instead.
 	const retryable = (status === "ready" || status === "error") && !busy && !compacting && endsInFailedTurn(nativeMessages);
 	const retryFailedTurn = () => retryFailedResponse(send, draftRef);
-	const sendAllowed = !pending && !activeProblem && !compacting;
+	const sendAllowed = !pending && !activeProblem && !compacting && drawingUploads === 0;
 
 	/* THE PRACTICE PAUSE (owner round 16): between problems — practice
 	 * kind, nothing active, nothing in flight, and at least one problem
@@ -1252,7 +1265,7 @@ export function Chat({
 		void dictation.finish().then(doSteerOrSend);
 	};
 	const doSend = () => {
-		if (busy || pending || compacting) return;
+		if (busy || pending || compacting || drawingUploadsRef.current > 0) return;
 		const t = textRef.current.trim();
 		if (!t && pendingImages.length === 0) return;
 		if (zeroKeys && !trialParticipant) {
@@ -1283,8 +1296,37 @@ export function Chat({
 	 * own stream AND foreign/wake turns — both have a live agent by the
 	 * time the send's POST resolved, so the steer lands. Idle takes the
 	 * plain send; a raced settle 409s and falls back to exactly that. */
+	const uploadDrawing = (data: string) => {
+		drawingUploadsRef.current += 1;
+		setDrawingUploads(drawingUploadsRef.current);
+		setDrawingError(null);
+		void (async () => {
+			try {
+				const res = await fetch("/api/learner-images", {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({ data, mimeType: "image/png" }),
+				});
+				const body = (await res.json().catch(() => ({}))) as { id?: string };
+				if (!res.ok || typeof body.id !== "string") {
+					setDrawingRetry(data);
+					setDrawingError(t("chat.drawing.failed"));
+					return;
+				}
+				setDrawingRetry(null);
+				setPendingImages((current) => [...current, { data, mimeType: "image/png" as const, imageId: body.id as string }].slice(-4));
+				setDrawingOpen(false);
+			} catch {
+				setDrawingRetry(data);
+				setDrawingError(t("chat.drawing.failed"));
+			} finally {
+				drawingUploadsRef.current = Math.max(0, drawingUploadsRef.current - 1);
+				setDrawingUploads(drawingUploadsRef.current);
+			}
+		})();
+	};
 	const doSteerOrSend = () => {
-		if (pending || compacting) return;
+		if (pending || compacting || drawingUploadsRef.current > 0) return;
 		const t = textRef.current.trim();
 		if (!t && pendingImages.length === 0) return;
 		if (busy) {
@@ -1839,19 +1881,17 @@ export function Chat({
 					composer={
 						<div className="flex flex-col gap-2">
 						{sideAnchor ? <SideThreadPanel chatId={chatId} anchor={sideAnchor} onClose={() => setSideAnchor(null)} /> : null}
-						{plugins.drawingPad && drawingOpen ? <DrawingPad onAdd={(data) => {
-							void (async () => {
-								const res = await fetch("/api/learner-images", {
-									method: "POST",
-									headers: { "content-type": "application/json" },
-									body: JSON.stringify({ data, mimeType: "image/png" }),
-								});
-								const body = (await res.json().catch(() => ({}))) as { id?: string };
-								if (!res.ok || typeof body.id !== "string") return;
-								setPendingImages((current) => [...current, { data, mimeType: "image/png" as const, imageId: body.id as string }].slice(-4));
-								setDrawingOpen(false);
-							})();
-						}} /> : null}
+						{plugins.drawingPad && drawingOpen ? <DrawingPad onAdd={uploadDrawing} /> : null}
+						{drawingError ? (
+							<p role="alert" className="text-xs text-red-500">
+								{drawingError}{" "}
+								{drawingRetry ? (
+									<button type="button" className="underline" onClick={() => uploadDrawing(drawingRetry)}>
+										{t("chat.drawing.retry")}
+									</button>
+								) : null}
+							</p>
+						) : null}
 						{plugins.drawingPad && pendingImages.length > 0 ? <div className="text-xs text-muted-foreground">{pendingImages.length}</div> : null}
 						{plugins.drawingPad ? (
 							<button type="button" className="self-start text-xs text-muted-foreground" onClick={() => setDrawingOpen((open) => !open)} aria-label={drawingOpen ? t("chat.drawing.close") : t("chat.drawing.open")}>

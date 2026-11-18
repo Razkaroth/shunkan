@@ -23,7 +23,6 @@ configureSpendGuard(async () => {
 		status = await familySubscriptionStatus(customerId);
 	} catch (err) {
 		console.warn("spend gate could not read the subscription", err instanceof Error ? err.message : err);
-		if (await payAsYouGoEnabled()) return;
 		throw new SpendBlockedError();
 	}
 	if (!subscriptionAllowsSpend(status)) throw new SpendBlockedError();

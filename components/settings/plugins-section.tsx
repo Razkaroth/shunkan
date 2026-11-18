@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PLUGIN_IDS, type PluginFlags, type PluginId } from "@/src/core";
+import { PLUGINS_CHANGED_EVENT, PLUGIN_IDS, type PluginFlags, type PluginId } from "@/src/core";
 import { useT } from "@/components/i18n";
 import { SettingsRow, Toggle } from "./controls.tsx";
 
@@ -18,6 +18,7 @@ export function PluginsSection() {
 	const [allowed, setAllowed] = useState<PluginFlags>(EMPTY);
 	const [enabled, setEnabled] = useState<PluginFlags>(EMPTY);
 	const [error, setError] = useState<string | null>(null);
+	const [pending, setPending] = useState(false);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -38,18 +39,25 @@ export function PluginsSection() {
 	}, [t]);
 
 	async function toggle(id: PluginId, next: boolean) {
+		if (pending) return;
+		setPending(true);
 		setError(null);
-		const res = await fetch("/api/plugins", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ plugin: id, enabled: next }),
-		});
-		const body = (await res.json().catch(() => ({}))) as { enabled?: PluginFlags; error?: string };
-		if (!res.ok || !body.enabled) {
-			setError(body.error ?? t("settings.plugins.failed"));
-			return;
+		try {
+			const res = await fetch("/api/plugins", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ plugin: id, enabled: next }),
+			});
+			const body = (await res.json().catch(() => ({}))) as { enabled?: PluginFlags; error?: string };
+			if (!res.ok || !body.enabled) {
+				setError(body.error ?? t("settings.plugins.failed"));
+				return;
+			}
+			setEnabled(body.enabled);
+			window.dispatchEvent(new CustomEvent(PLUGINS_CHANGED_EVENT, { detail: body.enabled }));
+		} finally {
+			setPending(false);
 		}
-		setEnabled(body.enabled);
 	}
 
 	return (
@@ -59,7 +67,7 @@ export function PluginsSection() {
 				<SettingsRow key={id} label={t(LABEL[id])} hint={allowed[id] ? undefined : t("settings.plugins.unavailable")}>
 					<Toggle
 						checked={enabled[id]}
-						disabled={!allowed[id]}
+						disabled={!allowed[id] || pending}
 						onChange={(next) => void toggle(id, next)}
 						label={t(LABEL[id])}
 						testid={`plugin-${id}`}
