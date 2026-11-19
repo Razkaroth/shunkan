@@ -183,11 +183,18 @@ export function newMessageId(): string {
 export interface InlineImage {
 	data: string;
 	mimeType: "image/png";
+	/** Private learner-images id. The model still receives `data`. */
+	imageId?: string;
 }
 
 /** A learner-authored user message (text input, verdict note). */
 export function newUserMessage(text: string, images?: readonly InlineImage[]): LhMessage & UserMessage {
-	const pictures = (images ?? []).map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType }));
+	const pictures = (images ?? []).map((image) => ({
+		type: "image" as const,
+		data: image.data,
+		mimeType: image.mimeType,
+		...(image.imageId ? { imageId: image.imageId } : {}),
+	}));
 	return {
 		id: newMessageId(),
 		role: "user",

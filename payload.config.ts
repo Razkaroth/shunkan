@@ -6,8 +6,10 @@ import { s3Storage } from "@payloadcms/storage-s3";
 import { buildConfig } from "payload";
 import { betterAuthPlugin } from "payload-auth/better-auth";
 import { DemoFiles } from "./collections/DemoFiles.ts";
+import { LearnerImages } from "./collections/LearnerImages.ts";
 import { LearnerRecords } from "./collections/LearnerRecords.ts";
 import { FeatureFlags } from "./globals/FeatureFlags.ts";
+import { Plugins } from "./globals/Plugins.ts";
 import { Pricing } from "./globals/Pricing.ts";
 import { payloadAuthOptions } from "./lib/auth/options.ts";
 import { readEnv } from "./lib/env.ts";
@@ -24,8 +26,8 @@ export default buildConfig({
 		admin: "/admin",
 		api: "/api/payload",
 	},
-	collections: [DemoFiles, LearnerRecords],
-	globals: [FeatureFlags, Pricing],
+	collections: [DemoFiles, LearnerImages, LearnerRecords],
+	globals: [FeatureFlags, Plugins, Pricing],
 	editor: lexicalEditor(),
 	secret: env.PAYLOAD_SECRET,
 	typescript: {

@@ -36,6 +36,8 @@ export interface Profile {
 	pin?: string;
 	/** Stripe customer (`cus_…`) billed for this profile's gateway token usage. Absent means the request is not metered. */
 	stripeCustomerId?: string;
+	/** Payload user id of the account that owns this profile. Absent until an operator or signup attaches one. */
+	ownerId?: string;
 	/** The one university-trial friend. Absent on every other profile. */
 	trial?: boolean;
 	createdAt: string;
@@ -113,6 +115,11 @@ export function isValidPin(value: unknown): value is string {
 /** Stripe customer ids the AI Gateway meter events accept. */
 export function isStripeCustomerId(value: unknown): value is string {
 	return typeof value === "string" && /^cus_[A-Za-z0-9]+$/.test(value);
+}
+
+/** Payload user ids stored on a profile. */
+export function isOwnerId(value: unknown): value is string {
+	return typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
 
 /** First letter of the first two words; a single word gives its first two letters. */

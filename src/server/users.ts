@@ -20,6 +20,7 @@ import * as fs from "../persistence/data-file.ts";
 import path from "node:path";
 import { INSTALL, LEARNER_ENTRIES, runAsUser, userDataDir } from "../../config.ts";
 import {
+	isOwnerId,
 	isProfileColor,
 	isStripeCustomerId,
 	isValidPin,
@@ -46,6 +47,7 @@ import {
 import { readSettings, writeSettings } from "../store/settings.ts";
 import { isAppLanguage, type AppLanguage } from "../core/i18n.ts";
 import { resolveSettings } from "../core/settings-resolution.ts";
+import { requestAccountId } from "./account.ts";
 
 export { registryExists } from "../store/users.ts";
 export { runAsUser, activeUserId } from "../../config.ts";
@@ -90,6 +92,25 @@ export function requestProfile(req: Request | undefined): Profile | null {
 	return id ? (readProfiles().find((p) => p.id === id) ?? null) : null;
 }
 
+function hasAccountSessionCookie(req: Request | undefined): boolean {
+	const header = req?.headers.get("cookie");
+	if (!header) return false;
+	return /(?:^|;\s*)(?:__Secure-|__Host-)?better-auth\.session_token=/.test(header);
+}
+
+/**
+ * The profile cookie, dropped when a Payload session is present and the
+ * profile belongs to a different account. No account cookie leaves the
+ * profile cookie as it is, so the unsigned trial still opens.
+ */
+export async function requestBoundProfile(req: Request | undefined): Promise<Profile | null> {
+	const profile = requestProfile(req);
+	if (!profile || !hasAccountSessionCookie(req)) return profile;
+	const accountId = await requestAccountId(req);
+	if (accountId && profile.ownerId !== accountId) return null;
+	return profile;
+}
+
 /** Session cookie: no Max-Age, so a closed app or browser lands on the
  *  select screen again. */
 export function sessionCookieHeader(sessionId: string): string {
@@ -120,14 +141,23 @@ function publicWithLanguage(profile: Profile): PublicProfile {
 	return { ...publicProfile(profile), language: profileLanguage(profile.id) };
 }
 
-export function usersSnapshot(req: Request | undefined): UsersSnapshot {
+/** The signed-in account asked to attach a profile to someone else. */
+export function assertOwnAccount(requested: unknown, accountId: string): void {
+	if (typeof requested === "string" && requested !== accountId) {
+		throw new UsersError(403, "A profile belongs to the signed-in account.");
+	}
+}
+
+export function usersSnapshot(req: Request | undefined, ownerId: string): UsersSnapshot {
 	const profiles = readProfiles();
+	const owned = profiles.filter((profile) => profile.ownerId === ownerId);
 	const caller = requestProfile(req);
+	const visibleCaller = caller?.ownerId === ownerId ? caller : null;
 	return {
-		profiles: profiles.map(publicWithLanguage),
+		profiles: owned.map(publicWithLanguage),
 		host: readHostSettings(),
-		current: caller ? publicWithLanguage(caller) : null,
-		canSignUp: canSignUp(caller, profiles),
+		current: visibleCaller ? publicWithLanguage(visibleCaller) : null,
+		canSignUp: canSignUp(visibleCaller, profiles),
 		existingData: hasUnclaimedData(),
 	};
 }
@@ -187,27 +217,32 @@ function writeLanguage(userId: string, language: AppLanguage): void {
  * request with no signed-in profile (the select screen) is signed in as
  * the new profile; the admin adding someone from Settings stays put.
  */
-export function createProfile(req: Request | undefined, input: ProfileInput): { profile: PublicProfile; sessionId: string | null } {
+export function createProfile(req: Request | undefined, input: ProfileInput, ownerId: string): { profile: PublicProfile; sessionId: string | null } {
+	if (!isOwnerId(ownerId)) throw new UsersError(401, "Sign in first.");
 	const profiles = readProfiles();
 	const caller = requestProfile(req);
-	if (!canSignUp(caller, profiles)) throw new UsersError(403, "Sign-ups are restricted. Ask the admin to add you.");
+	const ownCaller = caller?.ownerId === ownerId ? caller : null;
+	if (!canSignUp(ownCaller, profiles)) throw new UsersError(403, "Sign-ups are restricted. Ask the admin to add you.");
 	const name = parseName(input.name, profiles);
 	const color = parseColor(input.color);
 	const pin = parsePin(input.pin);
 	const first = profiles.length === 0;
+	const sharedCustomer = profiles.find((profile) => profile.ownerId === ownerId && profile.stripeCustomerId)?.stripeCustomerId;
 	const profile: Profile = {
 		id: mintUserId(),
 		name,
 		color,
 		role: first ? "admin" : "member",
+		ownerId,
 		...(pin ? { pin } : {}),
+		...(sharedCustomer ? { stripeCustomerId: sharedCustomer } : {}),
 		createdAt: new Date().toISOString(),
 	};
 	if (first && !registryExists()) claimRoot(profile.id);
 	else fs.mkdirSync(userDataDir(profile.id), { recursive: true });
 	if (isAppLanguage(input.language)) writeLanguage(profile.id, input.language);
 	writeProfiles([...profiles, profile]);
-	const sessionId = caller ? null : createSession(profile.id);
+	const sessionId = ownCaller ? null : createSession(profile.id);
 	return { profile: publicWithLanguage(profile), sessionId };
 }
 
@@ -250,10 +285,12 @@ export function deleteProfile(req: Request | undefined, id: string): void {
 	fs.rmSync(userDataDir(id), { recursive: true, force: true });
 }
 
-/** Open a profile: checks the PIN when it has one. Returns the session id. */
-export function unlockProfile(id: unknown, pin: unknown): string {
+/** Open a profile that belongs to this Payload user. A missing PIN is not enough for a different user. */
+export function unlockProfile(id: unknown, pin: unknown, ownerId: string): string {
+	if (!isOwnerId(ownerId)) throw new UsersError(401, "Sign in first.");
 	const profile = readProfiles().find((p) => p.id === id);
 	if (!profile) throw new UsersError(404, "No such profile.");
+	if (profile.ownerId !== ownerId) throw new UsersError(403, "That profile belongs to another account.");
 	if (profile.pin && profile.pin !== pin) throw new UsersError(401, "Wrong PIN.");
 	return createSession(profile.id);
 }
@@ -288,8 +325,8 @@ export function withUser<A extends unknown[]>(
 	return async (...args: A): Promise<Response> => {
 		if (!registryExists()) return handler(...args);
 		const req = args[0] instanceof Request ? args[0] : undefined;
-		const userId = sessionProfileId(requestSessionId(req));
-		if (!userId) return Response.json({ error: "Choose a profile first." }, { status: 401 });
-		return runAsUser(userId, () => handler(...args));
+		const profile = await requestBoundProfile(req);
+		if (!profile) return Response.json({ error: "Choose a profile first." }, { status: 401 });
+		return runAsUser(profile.id, () => handler(...args));
 	};
 }

@@ -11,10 +11,16 @@ import * as path from "node:path";
 import { after, before, describe, it } from "node:test";
 import { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall, type FauxResponseStep } from "@earendil-works/pi-ai";
 import type { PiEngine } from "../src/agent/models.ts";
+import { learnerRoot } from "../config.ts";
 import { runPdfReaderAgent } from "../src/agent/subagents/pdf-reader.ts";
 import type { HeadlessApi } from "../src/agent/subagents/headless.ts";
 
 const FIXTURE = path.join(import.meta.dirname, "fixtures", "sample-3page.pdf");
+const PROFILE_PDF = path.join(learnerRoot(), `lh-pdf-reader-${process.pid}`, "sample-3page.pdf");
+fs.mkdirSync(path.dirname(PROFILE_PDF), { recursive: true });
+fs.copyFileSync(FIXTURE, PROFILE_PDF);
+const UNREADABLE = path.join(path.dirname(PROFILE_PDF), "not-a-pdf.txt");
+fs.copyFileSync(path.join(import.meta.dirname, "fixtures", "not-a-pdf.txt"), UNREADABLE);
 
 function fauxEngine(steps: FauxResponseStep[]): PiEngine {
 	const faux = createFauxCore({ tokenSize: { min: 64, max: 64 } });
@@ -54,34 +60,24 @@ function fakeHeadless(rendered: { pages: number[] } = { pages: [] }): HeadlessAp
 }
 
 describe("pdf-reader source paths", () => {
-	let home: string;
-	const relativePath = path.join("Course notes", "sample document.pdf");
-	const originalHome = process.env.HOME;
-	const originalUserProfile = process.env.USERPROFILE;
+	const home = learnerRoot();
+	const relativePath = path.join(`lh-pdf-src-${process.pid}`, "Course notes", "sample document.pdf");
 
 	before(() => {
-		home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-pdf-home-"));
 		const target = path.join(home, relativePath);
 		fs.mkdirSync(path.dirname(target), { recursive: true });
 		fs.copyFileSync(FIXTURE, target);
-		process.env.HOME = home;
-		process.env.USERPROFILE = home;
 	});
 
 	after(() => {
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
-		if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-		else process.env.USERPROFILE = originalUserProfile;
-		fs.rmSync(home, { recursive: true, force: true });
+		fs.rmSync(path.join(home, `lh-pdf-src-${process.pid}`), { recursive: true, force: true });
 	});
 
 	for (const kind of ["absolute", "home-relative", "tilde"] as const) {
 		it(`${kind} path reaches text tools and rendering as the same absolute path`, async () => {
 			const absolutePath = path.join(home, relativePath);
 			const inputPath = { absolute: absolutePath, "home-relative": relativePath, tilde: `~/${relativePath}` }[kind];
-			assert.equal(os.homedir(), home);
-			assert.notEqual(path.resolve(relativePath), absolutePath, "cwd is not the learner's home");
+			assert.notEqual(path.resolve(relativePath), absolutePath, "cwd is not the profile folder");
 			const headless = fakeHeadless();
 			const engine = fauxEngine([
 				fauxAssistantMessage([fauxToolCall("pdf_info", {}, { id: "i1" })], { stopReason: "toolUse" }),
@@ -137,10 +133,10 @@ describe("pdf-reader loop (faux engine)", () => {
 			fauxAssistantMessage([fauxText("The integral rule appears on page 1 (p. 1). Pages consulted: 1, 2")]),
 		]);
 		const result = await runPdfReaderAgent(
-			{ path: FIXTURE, question: "what is the integral of x?" },
+			{ path: PROFILE_PDF, question: "what is the integral of x?" },
 			{ engine },
 		);
-		assert.equal(result.path, FIXTURE);
+		assert.equal(result.path, PROFILE_PDF);
 		assert.match(result.brief, /integral rule/);
 		assert.deepEqual(result.pagesRead, [1, 2], "extracted pages are read pages");
 		assert.deepEqual(result.pagesConsulted, [1, 2]);
@@ -160,7 +156,7 @@ describe("pdf-reader loop (faux engine)", () => {
 			fauxAssistantMessage([fauxText("Found it on page 1 (p. 1): the integral of x dx.")]),
 		]);
 		const result = await runPdfReaderAgent(
-			{ path: FIXTURE, question: "integral of x?" },
+			{ path: PROFILE_PDF, question: "integral of x?" },
 			{ engine, onActivity: (line) => void (line && (nudged ||= line.startsWith("pdf_search"))) },
 		);
 		assert.match(result.brief, /Found it on page 1/);
@@ -180,7 +176,7 @@ describe("pdf-reader loop (faux engine)", () => {
 			fauxAssistantMessage([fauxText("The physics formula is visible on page 2 (p. 2).")]),
 		]);
 		const result = await runPdfReaderAgent(
-			{ path: FIXTURE, question: "what is the force formula?" },
+			{ path: PROFILE_PDF, question: "what is the force formula?" },
 			{ engine, headless },
 		);
 		assert.deepEqual(result.pagesRead, [2, 3], "rendered pages are read pages");
@@ -200,7 +196,7 @@ describe("pdf-reader loop (faux engine)", () => {
 			fauxAssistantMessage([fauxText("Extracted instead: the calculus line (p. 1).")]),
 		]);
 		const result = await runPdfReaderAgent(
-			{ path: FIXTURE, question: "page 1 content?" },
+			{ path: PROFILE_PDF, question: "page 1 content?" },
 			{
 				engine,
 				headless: {
@@ -226,7 +222,7 @@ describe("pdf-reader loop (faux engine)", () => {
 	it("an unreadable source fails deterministically before any model call", async () => {
 		const engine = fauxEngine([fauxAssistantMessage([fauxText("never reached")])]);
 		const result = await runPdfReaderAgent(
-			{ path: path.join(import.meta.dirname, "fixtures", "not-a-pdf.txt"), question: "anything" },
+			{ path: UNREADABLE, question: "anything" },
 			{ engine },
 		);
 		// had the model been consulted, the brief would be its text instead

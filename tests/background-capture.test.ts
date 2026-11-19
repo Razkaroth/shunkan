@@ -34,6 +34,10 @@ const { createFauxCore, fauxAssistantMessage, fauxText, fauxToolCall } = await i
 const model = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, "../node_modules/@earendil-works/pi-ai/dist/providers/data/nvidia.json"), "utf8"))["openai-completions"]["chat:deepseek-ai/deepseek-v4.1-flash"] as Model<"openai-completions">;
 const identity = { provider: model.provider, id: model.id, api: model.api };
 const { runPdfReaderAgent } = await import("../src/agent/subagents/pdf-reader.ts");
+const { learnerRoot } = await import("../config.ts");
+const profilePdf = path.join(learnerRoot(), `lh-background-${process.pid}`, "sample-3page.pdf");
+fs.mkdirSync(path.dirname(profilePdf), { recursive: true });
+fs.copyFileSync(path.join(import.meta.dirname, "fixtures/sample-3page.pdf"), profilePdf);
 const { runVisualMaker } = await import("../src/agent/subagents/visual-maker.ts");
 const { createCanvas } = await import("@napi-rs/canvas");
 const fixturePng = createCanvas(8, 8).toBuffer("image/png");
@@ -297,7 +301,7 @@ for (const role of ["pdfReader", "visualMaker"] as const) {
 			let calls = 0;
 			const opts = { engine, headless, chatId: `fixture_${role}`, onUsage: () => { calls++; } };
 			if (role === "pdfReader") {
-				const result = await runPdfReaderAgent({ path: path.join(import.meta.dirname, "fixtures/sample-3page.pdf"), question: "Synthetic figure?" }, opts);
+				const result = await runPdfReaderAgent({ path: profilePdf, question: "Synthetic figure?" }, opts);
 				assert.equal(result.brief, "FINAL_pdfReader_REPLY");
 				assert.deepEqual(result.pagesRead, [1]);
 			} else {
@@ -324,7 +328,7 @@ for (const role of ["pdfReader", "visualMaker"] as const) {
 		const dir = setup(t, role);
 		const opts = { engine: fakeEngine(true), headless };
 		const result = role === "pdfReader"
-			? await runPdfReaderAgent({ path: path.join(import.meta.dirname, "fixtures/sample-3page.pdf"), question: "Fixture?" }, opts)
+			? await runPdfReaderAgent({ path: profilePdf, question: "Fixture?" }, opts)
 			: await runVisualMaker({ brief: "Fixture" }, opts);
 		assert.match(JSON.stringify(result), /waiting for response headers/);
 		const record = readCapture(dir);

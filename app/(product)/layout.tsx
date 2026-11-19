@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { AppShell, SidebarProvider } from "@/components/sidebar";
 import { ActivityProvider } from "@/components/activity-dock";
 import { PhoneLayoutProvider } from "@/components/phone-layout-context";
@@ -10,6 +11,7 @@ import { I18nProvider } from "@/components/i18n";
 import { ProductTour } from "@/components/product-tour";
 import { translate } from "@/src/core";
 import { trialStatusFor } from "@/src/server";
+import { pageAccountId } from "../_lib/account";
 import { pageLanguage } from "../_lib/language";
 import { pageUserId } from "../_lib/user";
 
@@ -25,9 +27,12 @@ export const dynamic = "force-dynamic";
 
 export default async function ProductLayout({ children }: { children: React.ReactNode }) {
 	const userId = await pageUserId();
+	const accountId = await pageAccountId();
+	const trial = userId ? trialStatusFor(userId) : null;
+	const unsignedTrial = Boolean(trial?.participant && !trial.signedUp);
+	if (!accountId && !unsignedTrial) redirect("/login");
 	const signedIn = userId !== null;
 	const profileId = userId;
-	const trial = userId ? trialStatusFor(userId) : null;
 	const language = await pageLanguage();
 	if (trial?.signupRequired) {
 		return (

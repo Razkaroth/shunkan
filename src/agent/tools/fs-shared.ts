@@ -1,6 +1,7 @@
+import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
+import { learnerRoot } from "../../../config.ts";
 
 /**
  * Shared plumbing for the learner-filesystem tools (ls / find / grep) —
@@ -11,8 +12,8 @@ import * as path from "node:path";
  * Safety posture (user-locked): READ-ONLY by construction — no shell-out,
  * no user-controlled process args, no mutation APIs anywhere here. The one
  * deliberate scope widening vs pi: relative paths and default roots resolve
- * against the LEARNER'S HOME, not a project cwd — the harness has no
- * meaningful working directory, and "find my notes" should just work.
+ * inside the active profile's learner-records prefix, not a project cwd
+ * and not the server home. A path that leaves that prefix is refused.
  *
  * Ported behaviors (mirroring pi's dist/core/tools/{ls,find,grep}.js): the
  * schemas, descriptions, output formats, and truncation notices are copied
@@ -35,15 +36,58 @@ export const WALK_TIMEOUT_MS = 10_000;
  */
 const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".git", "Library", ".Trash"]);
 
-/** Resolve a tool path argument: absolute stays, relative/absent → home.
- *  (pi resolves against the project cwd; the harness's "project" is the
- *  learner's life, so the home directory is the anchor.) A leading `~` or
- *  `~/` is the home directory, as a shell would expand it — learners and
- *  models write paths that way. `~user` is not expanded. */
+function insidePrefix(root: string, candidate: string): boolean {
+	const base = path.resolve(root);
+	const resolved = path.resolve(candidate);
+	const prefix = base.endsWith(path.sep) ? base : base + path.sep;
+	return resolved === base || resolved.startsWith(prefix);
+}
+
+function errno(err: unknown): string | undefined {
+	return err && typeof err === "object" && "code" in err && typeof err.code === "string" ? err.code : undefined;
+}
+
+/** The path with every existing symlink resolved. Missing tail segments stay lexical. */
+function canonicalPath(candidate: string): string {
+	const missing: string[] = [];
+	let current = candidate;
+	for (;;) {
+		try {
+			const real = fsSync.realpathSync(current);
+			return missing.length === 0 ? real : path.resolve(real, ...missing);
+		} catch (err) {
+			if (errno(err) !== "ENOENT") throw err;
+			const parent = path.dirname(current);
+			if (parent === current) throw err;
+			missing.unshift(path.basename(current));
+			current = parent;
+		}
+	}
+}
+
+/** Resolve a tool path inside the active profile's learner-records prefix.
+ *  A missing path, a relative path, and `~` or `~/` stay in that prefix.
+ *  They do not use the server home. An absolute path outside the prefix
+ *  is refused. `~user` is not expanded. A symlink is refused when its
+ *  target leaves the prefix, including a starting directory. */
 export function resolveSourcePath(p?: string): string {
-	if (!p) return os.homedir();
-	if (p === "~" || p.startsWith("~/") || p.startsWith(`~${path.sep}`)) return path.join(os.homedir(), p.slice(1));
-	return path.isAbsolute(p) ? p : path.join(os.homedir(), p);
+	const root = learnerRoot();
+	let rest = p ?? "";
+	if (rest === "~") rest = "";
+	else if (rest.startsWith("~/") || rest.startsWith(`~${path.sep}`)) rest = rest.slice(2);
+	const candidate = path.isAbsolute(rest) ? path.resolve(rest) : path.resolve(root, rest);
+	if (!insidePrefix(root, candidate)) throw new Error(`Path is outside this profile: ${p ?? ""}`);
+	let canonicalRoot = root;
+	let canonical = candidate;
+	try {
+		canonicalRoot = fsSync.realpathSync(root);
+		canonical = canonicalPath(candidate);
+	} catch (err) {
+		if (errno(err) === "ENOENT") return candidate;
+		throw new Error(`Path is outside this profile: ${p ?? ""}`);
+	}
+	if (!insidePrefix(canonicalRoot, canonical)) throw new Error(`Path is outside this profile: ${p ?? ""}`);
+	return canonical;
 }
 
 /** pi's formatSize idiom (50KB prints as "50.0KB"). */

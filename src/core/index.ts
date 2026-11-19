@@ -97,4 +97,5 @@ export * from "./session-markdown.ts";
 // users.ts (multi-user profiles, 2026-10-27): profile shape, avatar
 // palette, validation — pure, browser-safe.
 export * from "./users.ts";
+export * from "./plugins.ts";
 export * from "./trial.ts";

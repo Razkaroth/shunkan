@@ -1,11 +1,16 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE, registryExists, sessionProfileId } from "@/src/server";
+import { registryExists, requestBoundProfile } from "@/src/server";
 
-/** The signed-in profile on this browser, or null. */
+/** The signed-in profile on this browser, or null when it belongs to another account. */
 export async function pageUserId(): Promise<string | null> {
 	if (!registryExists()) return null;
-	return sessionProfileId((await cookies()).get(SESSION_COOKIE)?.value);
+	const jar = await cookies();
+	const header = new Headers();
+	const serialized = jar.toString();
+	if (serialized) header.set("cookie", serialized);
+	const profile = await requestBoundProfile(new Request("http://localhost/", { headers: header }));
+	return profile?.id ?? null;
 }
 
 /** Pages behind a profile: an unclaimed install or a missing session

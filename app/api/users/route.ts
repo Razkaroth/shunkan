@@ -1,21 +1,24 @@
 /**
- * The profile list + sign-up (multi-user profiles, 2026-10-27). Open
- * without a session: the select screen reads and posts here. Creating
- * from the select screen signs the browser in as the new profile; the
- * first profile becomes the admin and claims the install.
+ * The signed-in account's profiles. A request with no Payload session
+ * redirects to the login page. It does not answer with an empty list.
  */
-import { createProfile, sessionCookieHeader, usersErrorResponse, usersSnapshot } from "@/src/server";
+import { assertOwnAccount, createProfile, loginRedirect, requestAccountId, sessionCookieHeader, usersErrorResponse, usersSnapshot } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
-export function GET(req: Request) {
-	return Response.json(usersSnapshot(req));
+export async function GET(req: Request) {
+	const accountId = await requestAccountId(req);
+	if (!accountId) return loginRedirect(req);
+	return Response.json(usersSnapshot(req, accountId));
 }
 
 export async function POST(req: Request) {
-	const body = (await req.json().catch(() => ({}))) as { name?: unknown; color?: unknown; pin?: unknown; language?: unknown };
+	const accountId = await requestAccountId(req);
+	if (!accountId) return loginRedirect(req);
+	const body = (await req.json().catch(() => ({}))) as { name?: unknown; color?: unknown; pin?: unknown; language?: unknown; ownerId?: unknown };
 	try {
-		const { profile, sessionId } = createProfile(req, body);
+		assertOwnAccount(body.ownerId, accountId);
+		const { profile, sessionId } = createProfile(req, body, accountId);
 		const headers = sessionId ? { "Set-Cookie": sessionCookieHeader(sessionId) } : undefined;
 		return Response.json({ profile, signedIn: sessionId !== null }, { status: 201, headers });
 	} catch (err) {

@@ -74,7 +74,7 @@ import { createJobRunner, pdfModelOverride, researchModelOverride } from "../src
 import { providerKeyMissing, type ModelSlotName } from "../src/core/settings.ts";
 import type { PiEngine } from "../src/agent/models.ts";
 import type { SearchProvider } from "../src/core/search.ts";
-import { PATHS } from "../config.ts";
+import { learnerRoot, PATHS } from "../config.ts";
 import { projectView as projectNative } from "../src/core/view.ts";
 import { subscribe } from "../src/core/events.ts";
 import type { LhMessage } from "../src/core/native-messages.ts";
@@ -754,27 +754,20 @@ describe("research runner (async protocol §3)", () => {
 
 describe("pdf runner (sources v0)", () => {
 	const PDF_FIXTURE = path.join(import.meta.dirname, "fixtures", "sample-3page.pdf");
-	const PDF_INPUT = { path: PDF_FIXTURE, question: "What is the integral of x dx?" };
-	const relativePath = path.join("Course notes", "sample document.pdf");
-	let home: string;
-	const originalHome = process.env.HOME;
-	const originalUserProfile = process.env.USERPROFILE;
-
-	before(() => {
-		home = fs.mkdtempSync(path.join(os.tmpdir(), "lh-pdf-job-home-"));
-		const target = path.join(home, relativePath);
-		fs.mkdirSync(path.dirname(target), { recursive: true });
-		fs.copyFileSync(PDF_FIXTURE, target);
-		process.env.HOME = home;
-		process.env.USERPROFILE = home;
-	});
+	const nest = `lh-pdf-job-${process.pid}`;
+	const home = learnerRoot();
+	const PDF_COPY = path.join(home, nest, "sample-3page.pdf");
+	const relativePath = path.join(nest, "Course notes", "sample document.pdf");
+	const badPath = path.join(home, nest, "not-a-pdf.txt");
+	fs.mkdirSync(path.dirname(PDF_COPY), { recursive: true });
+	fs.copyFileSync(PDF_FIXTURE, PDF_COPY);
+	fs.mkdirSync(path.dirname(path.join(home, relativePath)), { recursive: true });
+	fs.copyFileSync(PDF_FIXTURE, path.join(home, relativePath));
+	fs.copyFileSync(path.join(import.meta.dirname, "fixtures", "not-a-pdf.txt"), badPath);
+	const PDF_INPUT = { path: PDF_COPY, question: "What is the integral of x dx?" };
 
 	after(() => {
-		if (originalHome === undefined) delete process.env.HOME;
-		else process.env.HOME = originalHome;
-		if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-		else process.env.USERPROFILE = originalUserProfile;
-		fs.rmSync(home, { recursive: true, force: true });
+		fs.rmSync(path.join(home, nest), { recursive: true, force: true });
 	});
 
 	/** A pdf-reader that triages, extracts pages 1-2, then briefs. */
@@ -807,7 +800,7 @@ describe("pdf runner (sources v0)", () => {
 		assert.equal(done.status, "done");
 		assert.equal(done.activity, "finished");
 		const result = done.result as PdfResult;
-		assert.equal(result.path, PDF_FIXTURE);
+		assert.equal(result.path, PDF_COPY);
 		assert.match(result.brief, /integral rule/);
 		assert.deepEqual(result.pagesRead, [1, 2], "extracted pages are READ pages");
 		assert.deepEqual(result.pagesConsulted, [1, 2]);
@@ -869,7 +862,6 @@ describe("pdf runner (sources v0)", () => {
 	it("an unreadable source: the job lands error with the PDF failed: brief and the steer flags the gap", async () => {
 		const chat = chatStore.createChat("Test: pdf runner failure");
 		trackChat(chat.id);
-		const badPath = path.join(import.meta.dirname, "fixtures", "not-a-pdf.txt");
 		const job = jobStore.createJob({ kind: "pdf", chatId: chat.id, toolCallId: "call-pdf2" });
 		trackJob(job.id);
 

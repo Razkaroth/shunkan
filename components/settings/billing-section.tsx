@@ -96,6 +96,9 @@ export function BillingSection() {
 								<button type="button" className={ACTION} disabled={pending} data-testid="billing-subscribe" onClick={() => void openCheckout("/api/billing/subscribe")}>
 									{pending ? t("settings.billing.working") : t("settings.billing.subscribe")}
 								</button>
+								<button type="button" className={ACTION} disabled={pending} data-testid="billing-portal" onClick={() => void openCheckout("/api/billing/portal")}>
+									{t("settings.billing.portal")}
+								</button>
 							</span>
 						</SettingsRow>
 					) : (

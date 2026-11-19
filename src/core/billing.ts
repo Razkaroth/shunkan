@@ -36,6 +36,77 @@ export const RECHARGE_GRANT_KIND = "recharge";
 const MIN_RECHARGE_MXN = 1;
 const MAX_RECHARGE_MXN = 100_000;
 
+export type FamilySubscription = "active" | "past_due" | "canceled" | "none";
+
+/** Stripe subscription statuses for one customer. past_due wins over active. No subscription is none. */
+export function familySubscriptionFromStatuses(statuses: readonly string[]): FamilySubscription {
+	if (statuses.length === 0) return "none";
+	if (statuses.includes("past_due")) return "past_due";
+	if (statuses.includes("active")) return "active";
+	return "canceled";
+}
+
+/** The spend gate allows a model call only while the family's subscription is active. */
+export function subscriptionAllowsSpend(status: FamilySubscription): boolean {
+	return status === "active";
+}
+
+/** A second Basic checkout is refused while the current one is active or past due. */
+export function secondBasicCheckoutRefused(status: FamilySubscription): boolean {
+	return status === "active" || status === "past_due";
+}
+
+export interface BasicSubscriptionView {
+	id: string;
+	created: number;
+	status: string;
+	priceIds: readonly string[];
+}
+
+/** A token-only subscription does not count as Basic. */
+export function basicCheckoutBlocked(subscriptions: readonly BasicSubscriptionView[], basicPriceId: string): boolean {
+	return subscriptions.some((subscription) =>
+		(subscription.status === "active" || subscription.status === "past_due")
+		&& subscription.priceIds.includes(basicPriceId),
+	);
+}
+
+/** Every live Basic subscription except the oldest one. The oldest stays. */
+export function basicSubscriptionsToCancel(subscriptions: readonly BasicSubscriptionView[], basicPriceId: string): string[] {
+	const live = subscriptions.filter((subscription) =>
+		(subscription.status === "active" || subscription.status === "past_due")
+		&& subscription.priceIds.includes(basicPriceId),
+	);
+	if (live.length <= 1) return [];
+	const ranked = [...live].sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+	return ranked.slice(1).map((subscription) => subscription.id);
+}
+
+export interface FailedPayment {
+	invoiceId: string;
+	amountCentavos: number;
+	currency: string;
+	created: number;
+}
+
+/** The newest invoice Stripe already tried and did not pay. Stripe stays the ledger. */
+export function lastFailedPayment<T extends { id?: string | null; status?: string | null; attempted?: boolean | null; paid?: boolean | null; amount_due?: number | null; currency?: string | null; created?: number | null }>(
+	invoices: readonly T[],
+): FailedPayment | null {
+	for (const invoice of invoices) {
+		if (!invoice.id || !invoice.attempted || invoice.paid) continue;
+		if (invoice.status === "void" || invoice.status === "draft" || invoice.status === "paid") continue;
+		if (typeof invoice.amount_due !== "number" || typeof invoice.created !== "number" || typeof invoice.currency !== "string") continue;
+		return {
+			invoiceId: invoice.id,
+			amountCentavos: invoice.amount_due,
+			currency: invoice.currency,
+			created: invoice.created,
+		};
+	}
+	return null;
+}
+
 export interface CreditPools {
 	/** Centavos of the current period's allotment still available. */
 	monthlyCentavos: number;

@@ -182,11 +182,12 @@ export function projectView(messages: readonly LhMessage[], live?: LiveTurnState
 		}
 
 		if (role === "user") {
-			const content = m.content as string | Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+			const content = m.content as string | Array<{ type: string; text?: string; data?: string; mimeType?: string; imageId?: string }>;
 			const parts = typeof content === "string"
 				? [textPart(content)]
 				: content.flatMap((part) => {
 					if (part.type === "text") return part.text ? [textPart(part.text)] : [];
+					if (part.type === "image" && part.mimeType && part.imageId) return [{ type: "image", imageId: part.imageId, mimeType: part.mimeType, state: "done" }];
 					if (part.type === "image" && part.data && part.mimeType) return [{ type: "image", data: part.data, mimeType: part.mimeType, state: "done" }];
 					return [];
 				});

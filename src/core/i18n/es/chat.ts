@@ -67,6 +67,8 @@ export const chat: Record<keyof typeof en, string> = {
 	"chat.drawing.undo": "Deshacer",
 	"chat.drawing.pan": "Mover",
 	"chat.drawing.add": "Añadir dibujo",
+	"chat.drawing.failed": "No se pudo añadir el dibujo. Inténtalo de nuevo.",
+	"chat.drawing.retry": "Intentar de nuevo",
 	"chat.ask": "Preguntar",
 	"chat.ask.aria": "Preguntar sobre este pasaje",
 	"chat.selection.toolbar": "Acciones de la selección",

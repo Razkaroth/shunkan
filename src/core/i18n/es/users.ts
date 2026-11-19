@@ -74,4 +74,13 @@ export const users: Record<keyof typeof en, string> = {
 	"users.trial.signup.password": "Contraseña",
 	"users.trial.signup.name": "Nombre",
 	"users.trial.signup.submit": "Crear cuenta",
+	"users.login.title": "Entrar",
+	"users.login.email": "Correo",
+	"users.login.password": "Contraseña",
+	"users.login.signIn": "Entrar",
+	"users.login.signUp": "Crear cuenta",
+	"users.login.switchSignUp": "¿Necesitas una cuenta? Regístrate",
+	"users.login.switchSignIn": "¿Ya tienes cuenta? Entra",
+	"users.login.failed": "No funcionó. Revisa el correo y la contraseña.",
+	"users.login.working": "Trabajando…",
 };

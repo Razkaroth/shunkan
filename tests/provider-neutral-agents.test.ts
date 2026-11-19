@@ -6,7 +6,7 @@
  */
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { describe, it } from "node:test";
 import {
@@ -20,10 +20,13 @@ import { runPdfReaderAgent } from "../src/agent/subagents/pdf-reader.ts";
 import type { HeadlessApi } from "../src/agent/subagents/headless.ts";
 import { AUTH_PROVIDER_KEYS } from "../src/core/auth-keys.ts";
 import { providerEventsDir } from "../src/agent/provider-events.ts";
+import { learnerRoot } from "../config.ts";
 
 const OR_KEY = "dummy-openrouter-MUST-NOT-REACH-other-endpoints";
 const SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><rect width="20" height="20" fill="white"/></svg>';
-const FIXTURE = path.join(import.meta.dirname, "fixtures", "sample-3page.pdf");
+const FIXTURE = path.join(learnerRoot(), `lh-provider-neutral-${process.pid}.pdf`);
+mkdirSync(path.dirname(FIXTURE), { recursive: true });
+copyFileSync(path.join(import.meta.dirname, "fixtures", "sample-3page.pdf"), FIXTURE);
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==", "base64");
 const FINAL = "Verified offline output (p. 1). Pages consulted: 1";
 const LOOPS = ["visual", "pdf"] as const;

@@ -200,9 +200,79 @@ export function UsersSection({
 							</button>
 						)}
 					</SettingsGroup>
+					<FamilyBilling />
 				</>
 			)}
 		</div>
+	);
+}
+
+interface FamilyRow {
+	ownerId: string;
+	profiles: { id: string; name: string }[];
+	subscription: "active" | "past_due" | "canceled" | "none" | "unconfigured" | "unavailable";
+	remaining: { monthlyCentavos: number; rechargeCentavos: number } | null;
+	creditUnavailable?: boolean;
+	lastFailedPayment: { invoiceId: string; amountCentavos: number; currency: string; created: number } | null;
+	paymentUnavailable?: boolean;
+}
+
+const FAMILY_STATUS = {
+	active: "settings.billing.subscription.active",
+	past_due: "settings.billing.subscription.past_due",
+	canceled: "settings.billing.subscription.canceled",
+	none: "settings.billing.subscription.none",
+	unconfigured: "settings.billing.subscription.unconfigured",
+	unavailable: "settings.billing.subscription.unavailable",
+} as const;
+
+function pesos(centavos: number): string {
+	const whole = Math.floor(Math.abs(centavos) / 100);
+	const frac = String(Math.abs(centavos) % 100).padStart(2, "0");
+	return `${whole}.${frac}`;
+}
+
+function FamilyBilling() {
+	const t = useT();
+	const [families, setFamilies] = useState<FamilyRow[] | null>(null);
+	useEffect(() => {
+		let cancelled = false;
+		void fetch("/api/billing/families", { cache: "no-store" })
+			.then((res) => (res.ok ? res.json() : null))
+			.then((body: { families?: FamilyRow[] } | null) => {
+				if (!cancelled) setFamilies(body?.families ?? []);
+			})
+			.catch(() => {
+				if (!cancelled) setFamilies([]);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, []);
+	if (!families || families.length === 0) return null;
+	return (
+		<SettingsGroup label={t("settings.billing.families")} testid="billing-families">
+			{families.map((family) => (
+				<div key={family.ownerId} className="flex flex-col gap-1 py-1" data-testid={`billing-family-${family.ownerId}`}>
+					<span className="font-ui text-xs text-foreground">{family.profiles.map((profile) => profile.name).join(", ")}</span>
+					<span className="font-ui text-xs text-muted-foreground">{t(FAMILY_STATUS[family.subscription])}</span>
+					{family.remaining ? (
+						<span className="font-ui text-xs text-muted-foreground">
+							{t("settings.billing.familyCredit")}: {pesos(family.remaining.monthlyCentavos + family.remaining.rechargeCentavos)} MXN
+						</span>
+					) : family.creditUnavailable ? (
+						<span className="font-ui text-xs text-muted-foreground">{t("settings.billing.familyCreditUnavailable")}</span>
+					) : null}
+					{family.lastFailedPayment ? (
+						<span className="font-ui text-xs text-muted-foreground">
+							{t("settings.billing.familyFailed")}: {pesos(family.lastFailedPayment.amountCentavos)} {family.lastFailedPayment.currency.toUpperCase()}
+						</span>
+					) : family.paymentUnavailable ? (
+						<span className="font-ui text-xs text-muted-foreground">{t("settings.billing.familyPaymentUnavailable")}</span>
+					) : null}
+				</div>
+			))}
+		</SettingsGroup>
 	);
 }
 

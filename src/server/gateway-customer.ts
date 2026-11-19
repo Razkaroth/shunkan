@@ -6,9 +6,13 @@
 import { activeUserId } from "../../config.ts";
 import { configureGatewayCustomer } from "../agent/gateway-provision.ts";
 import { readProfiles } from "../store/users.ts";
+import { familyCustomerId } from "./stripe-billing.ts";
 
 configureGatewayCustomer(() => {
 	const id = activeUserId();
 	if (!id) return undefined;
-	return readProfiles().find((profile) => profile.id === id)?.stripeCustomerId;
+	const profile = readProfiles().find((item) => item.id === id);
+	if (!profile) return undefined;
+	if (profile.ownerId) return familyCustomerId(profile.ownerId);
+	return profile.stripeCustomerId;
 });

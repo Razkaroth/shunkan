@@ -20,7 +20,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { FACTORY_SETTINGS, TEXT_WIDTH_SIZES, type AppearanceSettings } from "@/src/core";
+import { FACTORY_SETTINGS, PLUGINS_CHANGED_EVENT, TEXT_WIDTH_SIZES, type AppearanceSettings } from "@/src/core";
 
 /** The resolved, fully-concrete appearance view (delta + factory merged). */
 export function resolveAppearance(delta: AppearanceSettings | undefined) {
@@ -152,13 +152,34 @@ export function AppearanceProvider({ children }: { children: React.ReactNode }) 
 	// has ever set is tracked; names absent from the new set are removed so
 	// the factory stylesheet value returns.
 	const appliedNamesRef = useRef<Set<string>>(new Set());
+	const [richPlugin, setRichPlugin] = useState(false);
+	useEffect(() => {
+		let cancelled = false;
+		const apply = (enabled: { richCodeBlocks?: boolean } | undefined) => {
+			if (!cancelled) setRichPlugin(enabled?.richCodeBlocks === true);
+		};
+		const onChange = (event: Event) => {
+			apply((event as CustomEvent<{ richCodeBlocks?: boolean }>).detail);
+		};
+		window.addEventListener(PLUGINS_CHANGED_EVENT, onChange);
+		void fetch("/api/plugins", { cache: "no-store" })
+			.then((res) => (res.ok ? res.json() : null))
+			.then((body: { enabled?: { richCodeBlocks?: boolean } } | null) => {
+				apply(body?.enabled);
+			})
+			.catch(() => {});
+		return () => {
+			cancelled = true;
+			window.removeEventListener(PLUGINS_CHANGED_EVENT, onChange);
+		};
+	}, []);
 	useEffect(() => {
 		const root = document.documentElement;
-		const flags = delta?.richCode;
+		const flags = richPlugin ? delta?.richCode : undefined;
 		root.dataset.richChemical = flags?.chemicalStructures ? "1" : "";
 		root.dataset.richMusic = flags?.musicalNotation ? "1" : "";
 		root.dataset.richDiagrams = flags?.technicalDiagrams ? "1" : "";
-	}, [delta]);
+	}, [delta, richPlugin]);
 
 	useEffect(() => {
 		if (appliedRef.current === key) return;

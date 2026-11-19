@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { describe, it } from "node:test";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { learnerRoot } from "../config.ts";
 import { expandBraces, globToRegex, matchGlob, resolveSourcePath, walkFiles } from "../src/agent/tools/fs-shared.ts";
 import { findTool } from "../src/agent/tools/find.ts";
 import { grepTool } from "../src/agent/tools/grep.ts";
@@ -39,7 +40,7 @@ async function runText(tool: AgentTool<any>, params: unknown, signal?: AbortSign
 }
 
 async function setup(): Promise<string> {
-	const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-"));
+	const root = await fs.mkdtemp(path.join(learnerRoot(), "lh-fs-"));
 	await fs.mkdir(path.join(root, "notes", "sub"), { recursive: true });
 	await fs.mkdir(path.join(root, "code"), { recursive: true });
 	await fs.mkdir(path.join(root, "node_modules"), { recursive: true });
@@ -87,60 +88,72 @@ describe("glob helpers (fs-shared)", () => {
 });
 
 describe("resolveSourcePath (fs-shared)", () => {
-	it("a leading ~ is the learner's home, as a shell expands it", () => {
-		const home = os.homedir();
-		assert.equal(resolveSourcePath("~"), home);
-		assert.equal(resolveSourcePath("~/notes/calculus.md"), path.join(home, "notes", "calculus.md"));
-		assert.equal(resolveSourcePath(`~${path.sep}notes${path.sep}calculus.md`), path.join(home, "notes", "calculus.md"));
+	it("a leading ~ is this profile's folder", () => {
+		const root = learnerRoot();
+		assert.equal(resolveSourcePath("~"), root);
+		assert.equal(resolveSourcePath("~/notes/calculus.md"), path.join(root, "notes", "calculus.md"));
+		assert.equal(resolveSourcePath(`~${path.sep}notes${path.sep}calculus.md`), path.join(root, "notes", "calculus.md"));
 	});
 
-	it("preserves default, ordinary relative, and absolute paths", () => {
-		const home = os.homedir();
-		const absolute = path.join(os.tmpdir(), "course", "notes.md");
-		assert.equal(resolveSourcePath(), home);
-		assert.equal(resolveSourcePath(""), home);
-		assert.equal(resolveSourcePath("notes/calculus.md"), path.join(home, "notes", "calculus.md"));
-		assert.equal(resolveSourcePath(absolute), absolute);
+	it("keeps relative paths inside the profile and refuses an absolute path outside it", () => {
+		const root = learnerRoot();
+		const inside = path.join(root, "course", "notes.md");
+		assert.equal(resolveSourcePath(), root);
+		assert.equal(resolveSourcePath(""), root);
+		assert.equal(resolveSourcePath("notes/calculus.md"), path.join(root, "notes", "calculus.md"));
+		assert.equal(resolveSourcePath(inside), inside);
+		assert.throws(() => resolveSourcePath(path.join(os.tmpdir(), "course", "notes.md")), /outside this profile/);
 	});
 
-	it("backslash is a home separator only on Windows", () => {
+	it("backslash is a profile separator only on Windows", () => {
 		const input = "~\\notes\\calculus.md";
+		const root = learnerRoot();
 		const expected = process.platform === "win32"
-			? path.join(os.homedir(), "notes", "calculus.md")
-			: path.join(os.homedir(), input);
+			? path.join(root, "notes", "calculus.md")
+			: path.join(root, input);
 		assert.equal(resolveSourcePath(input), expected);
 	});
 
-	it("~user and non-leading tildes stay literal", () => {
-		const home = os.homedir();
-		assert.equal(resolveSourcePath("~other/notes.md"), path.join(home, "~other", "notes.md"));
-		assert.equal(resolveSourcePath("notes/~draft.md"), path.join(home, "notes", "~draft.md"));
-		assert.equal(resolveSourcePath("/tmp/~/x.md"), "/tmp/~/x.md");
+	it("refuses a symlink that leaves the profile and keeps one that stays inside", async () => {
+		const root = learnerRoot();
+		const dir = await fs.mkdtemp(path.join(root, "lh-link-"));
+		const outside = await fs.mkdtemp(path.join(os.tmpdir(), "lh-outside-"));
+		try {
+			await fs.writeFile(path.join(outside, "secret.txt"), "secret");
+			await fs.symlink(outside, path.join(dir, "link"));
+			assert.throws(() => resolveSourcePath(path.join(dir, "link")), /outside this profile/);
+			assert.throws(() => resolveSourcePath(path.join(dir, "link", "secret.txt")), /outside this profile/);
+			await fs.writeFile(path.join(dir, "inside.txt"), "inside");
+			await fs.symlink(path.join(dir, "inside.txt"), path.join(dir, "alias.txt"));
+			assert.equal(resolveSourcePath(path.join(dir, "alias.txt")), await fs.realpath(path.join(dir, "inside.txt")));
+		} finally {
+			await fs.rm(dir, { recursive: true, force: true });
+			await fs.rm(outside, { recursive: true, force: true });
+		}
+	});
+
+	it("~user and non-leading tildes stay inside the profile", () => {
+		const root = learnerRoot();
+		assert.equal(resolveSourcePath("~other/notes.md"), path.join(root, "~other", "notes.md"));
+		assert.equal(resolveSourcePath("notes/~draft.md"), path.join(root, "notes", "~draft.md"));
+		assert.throws(() => resolveSourcePath("/tmp/~/x.md"), /outside this profile/);
 	});
 });
 
 describe("learner tools share leading-tilde resolution", () => {
-	it("read, ls, find, and grep reach the same synthetic home", async () => {
+	it("read, ls, find, and grep stay inside the profile folder", async () => {
 		const home = await setup();
-		const originalHome = process.env.HOME;
-		const originalUserProfile = process.env.USERPROFILE;
+		const prefix = path.relative(learnerRoot(), home);
 		try {
-			process.env.HOME = home;
-			process.env.USERPROFILE = home;
-			assert.equal(os.homedir(), home);
-			const read = await runText(readTool, { path: "~/notes/calculus.md" });
+			const read = await runText(readTool, { path: `~/${prefix}/notes/calculus.md` });
 			assert.match(read, /The derivative measures force/);
-			const listed = await runText(lsTool, { path: "~/notes" });
+			const listed = await runText(lsTool, { path: `~/${prefix}/notes` });
 			assert.match(listed, /calculus\.md/);
-			const found = await runText(findTool, { path: "~/notes", pattern: "*.md" });
+			const found = await runText(findTool, { path: `~/${prefix}/notes`, pattern: "*.md" });
 			assert.match(found, /calculus\.md/);
-			const matched = await runText(grepTool, { path: "~/notes", pattern: "derivative" });
+			const matched = await runText(grepTool, { path: `~/${prefix}/notes`, pattern: "derivative" });
 			assert.match(matched, /calculus\.md:2: The derivative measures force/);
 		} finally {
-			if (originalHome === undefined) delete process.env.HOME;
-			else process.env.HOME = originalHome;
-			if (originalUserProfile === undefined) delete process.env.USERPROFILE;
-			else process.env.USERPROFILE = originalUserProfile;
 			await fs.rm(home, { recursive: true, force: true });
 		}
 	});
@@ -165,7 +178,8 @@ describe("ls (pi port)", () => {
 	});
 
 	it("missing path and non-directory throw (the model sees the error)", async () => {
-		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /Path not found/);
+		await assert.rejects(async () => lsTool.execute!("c", { path: "/nonexistent/xyz" }), /outside this profile/);
+		await assert.rejects(async () => lsTool.execute!("c", { path: "missing/xyz" }), /Path not found/);
 		await assert.rejects(
 			async () => lsTool.execute!("c", { path: path.join(FIXTURE, "binary.bin") }),
 			/Not a directory/,
@@ -297,7 +311,7 @@ describe("abort plumbing (the 2026-09-19 cascade fix)", () => {
 		// the walk+scan outlast an abort mid-flight. Whichever phase the
 		// abort lands in, the tool returns promptly with an abort notice —
 		// never "No matches found", never a hang.
-		const root = await fs.mkdtemp(path.join(os.tmpdir(), "lh-fs-midabort-"));
+		const root = await fs.mkdtemp(path.join(learnerRoot(), "lh-fs-midabort-"));
 		await fs.mkdir(path.join(root, "deep"), { recursive: true });
 		for (let i = 0; i < 200; i++) {
 			await fs.writeFile(path.join(root, i % 2 ? `f${i}.txt` : `deep/f${i}.txt`), "needle line\n");

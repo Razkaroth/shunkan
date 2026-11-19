@@ -9,7 +9,7 @@ import { capOutput, formatSize, MAX_OUTPUT_BYTES, resolveSourcePath } from "./fs
  * The ls tool — sources v1 (2026-09-19): a Node port of pi's
  * dist/core/tools/ls.js, home-anchored (fs-shared.ts). Schemas and the
  * output format are pi-verbatim; the only semantic deltas: the default
- * directory is the learner's home, and the path description says so.
+ * directory is this profile's folder, and the path description says so.
  * Read-only by construction — readdir/stat only, no mutation APIs.
  */
 
@@ -17,7 +17,7 @@ const DEFAULT_LIMIT = 500;
 
 const lsInput = Type.Object({
 	path: Type.Optional(
-		Type.String({ description: "Directory to list (default: the learner's home directory)" }),
+		Type.String({ description: "Directory to list (default: this profile's folder)" }),
 	),
 	limit: Type.Optional(
 		Type.Integer({ description: "Maximum number of entries to return (default: 500)" }),

@@ -2,11 +2,20 @@
  * Edit or delete one profile. Everyone edits their own name, color, PIN,
  * and language; the admin edits anyone and deletes members.
  */
-import { deleteProfile, updateProfile, usersErrorResponse } from "@/src/server";
+import { deleteProfile, requestBoundProfile, updateProfile, usersErrorResponse } from "@/src/server";
 
 export const dynamic = "force-dynamic";
 
+/** A Payload session for a different account makes the profile cookie absent. */
+async function ownAccount(req: Request): Promise<Response | null> {
+	const caller = await requestBoundProfile(req);
+	if (!caller) return Response.json({ error: "Choose a profile first." }, { status: 401 });
+	return null;
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+	const refused = await ownAccount(req);
+	if (refused) return refused;
 	const { id } = await params;
 	const body = (await req.json().catch(() => ({}))) as { name?: unknown; color?: unknown; pin?: unknown; language?: unknown; stripeCustomerId?: unknown };
 	try {
@@ -17,6 +26,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+	const refused = await ownAccount(req);
+	if (refused) return refused;
 	const { id } = await params;
 	try {
 		deleteProfile(req, id);

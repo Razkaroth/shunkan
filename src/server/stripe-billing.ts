@@ -9,8 +9,15 @@ import { readEnv } from "../../lib/env.ts";
 import {
 	BILLING_CURRENCY,
 	type CreditPools,
+	basicCheckoutBlocked,
+	basicSubscriptionsToCancel,
+	familySubscriptionFromStatuses,
+	type BasicSubscriptionView,
+	type FailedPayment,
+	type FamilySubscription,
 	type GrantSnapshot,
 	invoiceLinePriceId,
+	lastFailedPayment,
 	meteredUsageCentavos,
 	MONTHLY_GRANT_KIND,
 	monthlyAllotmentCentavos,
@@ -23,7 +30,7 @@ import {
 import { isStripeCustomerId, type Profile } from "../core/users.ts";
 import { readProfiles, writeProfiles } from "../store/users.ts";
 import { readPlanTerms } from "./plan-terms.ts";
-import { requestProfile, UsersError } from "./users.ts";
+import { requestBoundProfile, UsersError } from "./users.ts";
 
 const BASIC_INTEGRATION = "shunkan-basic-xkqmplrd";
 const RECHARGE_INTEGRATION = "shunkan-recharge-vtbnwckj";
@@ -71,30 +78,136 @@ function billingRuntime(): BillingRuntime {
 	return { stripe: stripeClient, prices };
 }
 
-function requireProfile(req: Request): Profile {
-	const profile = requestProfile(req);
+async function requireProfile(req: Request): Promise<Profile> {
+	const profile = await requestBoundProfile(req);
 	if (!profile) throw new UsersError(401, "Choose a profile first.");
-	return profile;
+	if (!profile.ownerId) return profile;
+	const customerId = familyCustomerId(profile.ownerId);
+	return customerId ? { ...profile, stripeCustomerId: customerId } : profile;
 }
 
-/** Checkout created this customer for this profile. Do not replace one an admin already set. */
+/** Copy this customer onto every profile of the same account that does not already have one. */
 export function bindProfileStripeCustomer(profileId: string, customerId: string): void {
 	if (!isStripeCustomerId(customerId)) return;
 	const profiles = readProfiles();
 	const target = profiles.find((profile) => profile.id === profileId);
-	if (!target || target.stripeCustomerId) return;
+	if (!target) return;
+	if (target.ownerId) {
+		assignFamilyCustomer(target.ownerId, customerId);
+		return;
+	}
+	if (target.stripeCustomerId) return;
 	writeProfiles(profiles.map((profile) => (
 		profile.id === profileId ? { ...profile, stripeCustomerId: customerId } : profile
 	)));
 }
 
+function assignFamilyCustomer(ownerId: string, customerId: string): void {
+	if (!isStripeCustomerId(customerId)) return;
+	const profiles = readProfiles();
+	let changed = false;
+	const next = profiles.map((profile) => {
+		if (profile.ownerId !== ownerId || profile.stripeCustomerId === customerId) return profile;
+		changed = true;
+		return { ...profile, stripeCustomerId: customerId };
+	});
+	if (changed) writeProfiles(next);
+}
+
+/** The one customer id for this account, written onto every one of its profiles. */
+export function familyCustomerId(ownerId: string | undefined): string | undefined {
+	if (!ownerId) return undefined;
+	const chosen = readProfiles().find((profile) => profile.ownerId === ownerId && profile.stripeCustomerId)?.stripeCustomerId;
+	if (!chosen) return undefined;
+	assignFamilyCustomer(ownerId, chosen);
+	return chosen;
+}
+
+/** One Stripe customer per Payload user, then copied onto each of that user's profiles. */
 async function customerForProfile(stripe: Stripe, profile: Profile): Promise<string> {
-	if (profile.stripeCustomerId) return profile.stripeCustomerId;
-	const customer = await stripe.customers.create({
+	if (!profile.ownerId) throw new UsersError(403, "An operator attaches this profile to an account first.");
+	const existing = familyCustomerId(profile.ownerId);
+	const customerId = existing ?? (await stripe.customers.create({
 		name: profile.name,
-		metadata: { profileId: profile.id },
-	}, { idempotencyKey: `shunkan_customer_${profile.id}` });
-	return customer.id;
+		metadata: { ownerId: profile.ownerId },
+	}, { idempotencyKey: `shunkan_customer_${profile.ownerId}` })).id;
+	assignFamilyCustomer(profile.ownerId, customerId);
+	return customerId;
+}
+
+const SUBSCRIPTION_STATUSES = ["active", "past_due", "trialing", "unpaid", "paused", "incomplete", "canceled", "incomplete_expired"] as const;
+
+async function listSubscriptions(
+	stripe: Stripe,
+	customerId: string,
+	status: (typeof SUBSCRIPTION_STATUSES)[number],
+): Promise<Stripe.Subscription[]> {
+	const found: Stripe.Subscription[] = [];
+	let startingAfter: string | undefined;
+	for (let page = 0; page < 20; page++) {
+		const listed = await stripe.subscriptions.list({
+			customer: customerId,
+			status,
+			limit: 100,
+			...(startingAfter ? { starting_after: startingAfter } : {}),
+		});
+		found.push(...listed.data);
+		if (!listed.has_more) return found;
+		startingAfter = listed.data[listed.data.length - 1]?.id;
+		if (!startingAfter) return found;
+	}
+	throw new BillingError(503, "Stripe subscription list was incomplete.");
+}
+
+function subscriptionView(subscription: Stripe.Subscription): BasicSubscriptionView {
+	return {
+		id: subscription.id,
+		created: subscription.created,
+		status: subscription.status,
+		priceIds: subscription.items.data.map((item) => priceId(item.price)).filter((id): id is string => id !== null),
+	};
+}
+
+/** Cancel every live Basic subscription except the oldest. Returns that oldest id. */
+async function keepOldestBasic(stripe: Stripe, customerId: string, basicPriceId: string): Promise<string | null> {
+	const listed = [
+		...(await listSubscriptions(stripe, customerId, "active")),
+		...(await listSubscriptions(stripe, customerId, "past_due")),
+	].map(subscriptionView);
+	const cancel = new Set(basicSubscriptionsToCancel(listed, basicPriceId));
+	for (const id of cancel) {
+		try {
+			await stripe.subscriptions.cancel(id);
+		} catch (err) {
+			const code = err && typeof err === "object" && "code" in err ? err.code : undefined;
+			if (code !== "resource_missing") throw err;
+		}
+	}
+	const keeper = listed
+		.filter((subscription) => subscription.priceIds.includes(basicPriceId) && !cancel.has(subscription.id))
+		.sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : 1))[0];
+	return keeper?.id ?? null;
+}
+
+export async function familySubscriptionStatus(customerId: string): Promise<FamilySubscription> {
+	const { stripe, prices } = billingRuntime();
+	const live = [
+		...(await listSubscriptions(stripe, customerId, "past_due")),
+		...(await listSubscriptions(stripe, customerId, "active")),
+	].filter((subscription) => subscriptionView(subscription).priceIds.includes(prices.basicPriceId));
+	const liveStatus = familySubscriptionFromStatuses(live.map((subscription) => subscription.status));
+	if (liveStatus === "past_due" || liveStatus === "active") return liveStatus;
+	for (const status of SUBSCRIPTION_STATUSES) {
+		if (status === "active" || status === "past_due") continue;
+		const listed = await listSubscriptions(stripe, customerId, status);
+		if (listed.some((subscription) => subscriptionView(subscription).priceIds.includes(prices.basicPriceId))) return "canceled";
+	}
+	return "none";
+}
+
+export async function lastFailedFamilyPayment(customerId: string): Promise<FailedPayment | null> {
+	const invoices = await billingRuntime().stripe.invoices.list({ customer: customerId, limit: 20 });
+	return lastFailedPayment(invoices.data);
 }
 
 function appOrigin(): string {
@@ -102,10 +215,17 @@ function appOrigin(): string {
 }
 
 export async function startBasicCheckout(req: Request): Promise<{ url: string }> {
-	const profile = requireProfile(req);
+	const profile = await requireProfile(req);
 	const { stripe, prices } = billingRuntime();
 	if (await readPlanTerms() === null) throw new BillingError(503, "The monthly price is not set.");
 	const customer = await customerForProfile(stripe, profile);
+	const live = [
+		...(await listSubscriptions(stripe, customer, "active")),
+		...(await listSubscriptions(stripe, customer, "past_due")),
+	].map(subscriptionView);
+	if (basicCheckoutBlocked(live, prices.basicPriceId)) {
+		throw new BillingError(409, "This account already has a Basic subscription.");
+	}
 	const origin = appOrigin();
 	const session = await stripe.checkout.sessions.create({
 		mode: "subscription",
@@ -128,7 +248,7 @@ export async function startBasicCheckout(req: Request): Promise<{ url: string }>
 export async function startRechargeCheckout(req: Request, amountMxn: unknown): Promise<{ url: string }> {
 	const centavos = rechargeCentavosFromMxn(amountMxn);
 	if (centavos === null) throw new BillingError(400, "Enter a whole number of MXN between 1 and 100000.");
-	const profile = requireProfile(req);
+	const profile = await requireProfile(req);
 	const { stripe, prices } = billingRuntime();
 	const customer = await customerForProfile(stripe, profile);
 	const origin = appOrigin();
@@ -167,7 +287,7 @@ export interface BillingStatus {
 }
 
 export async function billingStatus(req: Request, payAsYouGo: boolean): Promise<BillingStatus> {
-	const profile = requireProfile(req);
+	const profile = await requireProfile(req);
 	const terms = await readPlanTerms();
 	const base: BillingStatus = {
 		configured: billingPrices() !== null && Boolean(process.env.STRIPE_BILLING_RESTRICTED_KEY?.trim()),
@@ -238,6 +358,11 @@ async function grantMonthlyAllotment(invoice: Stripe.Invoice): Promise<void> {
 	const customerId = typeof invoice.customer === "string" ? invoice.customer : invoice.customer?.id ?? null;
 	const profileId = invoice.parent?.subscription_details?.metadata?.profileId ?? invoice.metadata?.profileId ?? null;
 	if (customerId && profileId) bindProfileStripeCustomer(profileId, customerId);
+	if (customerId && basic) {
+		const keeper = await keepOldestBasic(stripe, customerId, prices.basicPriceId);
+		const subscriptionId = invoiceSubscriptionId(invoice);
+		if (subscriptionId && keeper && subscriptionId !== keeper) return;
+	}
 	if (decision.action === "wait") throw new BillingError(503, "The monthly price is not set.");
 	if (decision.action !== "grant" || !customerId) return;
 	const spec = decision.spec;
@@ -261,8 +386,9 @@ async function fulfillCheckout(session: Stripe.Checkout.Session): Promise<void> 
 	const customerId = typeof session.customer === "string" ? session.customer : session.customer?.id ?? null;
 	const profileId = session.metadata?.profileId ?? session.client_reference_id;
 	if (customerId && profileId) bindProfileStripeCustomer(profileId, customerId);
-	if (session.mode !== "payment") return;
 	const { stripe, prices } = billingRuntime();
+	if (session.mode === "subscription" && customerId) await keepOldestBasic(stripe, customerId, prices.basicPriceId);
+	if (session.mode !== "payment") return;
 	const spec = rechargeGrantForPayment({
 		id: session.id,
 		kind: session.metadata?.shunkan_kind ?? null,
@@ -317,8 +443,11 @@ async function ensureTokenPrice(
 	tokenPriceId: string,
 	profileId: string | null,
 ): Promise<void> {
-	const listed = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 20 });
-	const open = listed.data.filter((sub) => sub.status === "active" || sub.status === "trialing" || sub.status === "past_due");
+	const open = [
+		...(await listSubscriptions(stripe, customerId, "active")),
+		...(await listSubscriptions(stripe, customerId, "trialing")),
+		...(await listSubscriptions(stripe, customerId, "past_due")),
+	];
 	const covered = open.some((sub) => sub.items.data.some((item) => priceId(item.price) === tokenPriceId));
 	if (covered) return;
 	const carrier = open[0];
@@ -419,6 +548,89 @@ function isNoUpcomingInvoice(err: unknown): boolean {
 	if (!err || typeof err !== "object") return false;
 	if ("code" in err && err.code === "invoice_upcoming_none") return true;
 	return err instanceof Error && /no upcoming invoices/i.test(err.message);
+}
+
+function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+	const subscription = invoice.parent?.subscription_details?.subscription;
+	if (typeof subscription === "string") return subscription;
+	return subscription?.id ?? null;
+}
+
+export async function startBillingPortal(req: Request): Promise<{ url: string }> {
+	const profile = await requireProfile(req);
+	if (!profile.stripeCustomerId) throw new BillingError(409, "Subscribe before opening the billing portal.");
+	const session = await billingRuntime().stripe.billingPortal.sessions.create({
+		customer: profile.stripeCustomerId,
+		return_url: `${appOrigin()}/chat/new`,
+	});
+	if (!session.url) throw new BillingError(502, "Stripe did not return a portal URL.");
+	return { url: session.url };
+}
+
+export interface FamilyBillingRow {
+	ownerId: string;
+	profiles: { id: string; name: string }[];
+	subscription: FamilySubscription | "unconfigured" | "unavailable";
+	remaining: CreditPools | null;
+	creditUnavailable: boolean;
+	lastFailedPayment: FailedPayment | null;
+	paymentUnavailable: boolean;
+}
+
+/** Product-admin view. Status, remaining credit, and the last failed payment are read from Stripe. */
+export async function familyBillingReport(req: Request): Promise<FamilyBillingRow[]> {
+	const profile = await requireProfile(req);
+	if (profile.role !== "admin") throw new UsersError(403, "Only the admin can see family billing.");
+	const groups = new Map<string, Profile[]>();
+	for (const item of readProfiles()) {
+		if (!item.ownerId) continue;
+		const members = groups.get(item.ownerId) ?? [];
+		members.push(item);
+		groups.set(item.ownerId, members);
+	}
+	const configured = billingPrices() !== null && Boolean(process.env.STRIPE_BILLING_RESTRICTED_KEY?.trim());
+	const rows: FamilyBillingRow[] = [];
+	for (const [ownerId, members] of groups) {
+		const customerId = familyCustomerId(ownerId) ?? members.find((member) => member.stripeCustomerId)?.stripeCustomerId;
+		const row: FamilyBillingRow = {
+			ownerId,
+			profiles: members.map((member) => ({ id: member.id, name: member.name })),
+			subscription: configured && customerId ? "none" : "unconfigured",
+			remaining: null,
+			creditUnavailable: false,
+			lastFailedPayment: null,
+			paymentUnavailable: false,
+		};
+		if (!configured || !customerId) {
+			rows.push(row);
+			continue;
+		}
+		let subscription = row.subscription;
+		let remaining: CreditPools | null = null;
+		let lastFailedPayment: FailedPayment | null = null;
+		let creditUnavailable = false;
+		let paymentUnavailable = false;
+		try {
+			subscription = await familySubscriptionStatus(customerId);
+		} catch (err) {
+			console.warn("family subscription could not be read", err instanceof Error ? err.message : err);
+			subscription = "unavailable";
+		}
+		try {
+			remaining = await remainingCreditPools(customerId);
+		} catch (err) {
+			console.warn("family credit could not be read", err instanceof Error ? err.message : err);
+			creditUnavailable = true;
+		}
+		try {
+			lastFailedPayment = await lastFailedFamilyPayment(customerId);
+		} catch (err) {
+			console.warn("family payment could not be read", err instanceof Error ? err.message : err);
+			paymentUnavailable = true;
+		}
+		rows.push({ ...row, subscription, remaining, creditUnavailable, lastFailedPayment, paymentUnavailable });
+	}
+	return rows;
 }
 
 export function billingErrorResponse(err: unknown): Response {
